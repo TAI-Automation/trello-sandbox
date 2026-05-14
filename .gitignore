@@ -1,0 +1,5 @@
+.env
+.power_up_env
+secrets.txt
+Notes.txt
+.vscode/*

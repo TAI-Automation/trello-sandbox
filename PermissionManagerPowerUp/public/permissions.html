@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Permission Manager</title>
+    <link rel="stylesheet" href="https://p.trellocdn.com/power-up.css">
+    <link rel="stylesheet" href="/power-up/permissions.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <h1>Permissions</h1>
+          <p id="boardLabel">Loading board permissions</p>
+        </div>
+        <button id="saveButton" class="mod-primary" type="button" disabled>Save</button>
+      </header>
+
+      <section id="message" class="message" hidden></section>
+
+      <section id="manager" class="manager" hidden>
+        <aside class="users">
+          <label for="memberSearch">Users</label>
+          <input id="memberSearch" type="search" placeholder="Filter users">
+          <div id="memberList" class="member-list" role="listbox" aria-label="Board users"></div>
+        </aside>
+
+        <section class="lists">
+          <div class="lists-header">
+            <div>
+              <h2 id="selectedMemberLabel">Select a user</h2>
+              <p id="allowedSummary">Choose lists this user may access.</p>
+            </div>
+            <label class="select-all">
+              <input id="selectAll" type="checkbox">
+              <span>Select all</span>
+            </label>
+          </div>
+          <div id="listChoices" class="list-choices"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script src="/power-up/permissions.js"></script>
+  </body>
+</html>

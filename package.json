@@ -1,7 +1,7 @@
 {
-  "name": "trelloplugins",
+  "name": "trello-permission-manager-suite",
   "version": "1.0.0",
-  "description": "",
+  "description": "Trello permission manager webhook and Power-Up suite.",
   "main": "index.js",
   "type": "module",
   "scripts": {

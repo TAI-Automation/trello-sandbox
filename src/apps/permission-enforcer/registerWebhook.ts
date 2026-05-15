@@ -1,20 +1,17 @@
 import "dotenv/config";
+import { config, getWebhookCallbackUrl, requireConfigValue } from "../../config/env.js";
 
-const {
-  TRELLO_KEY,
-  TRELLO_TOKEN,
-  TRELLO_BOARD_ID,
-  PUBLIC_BASE_URL,
-} = process.env;
-
-const callbackURL = `${PUBLIC_BASE_URL}/trello/webhook`;
+const key = requireConfigValue(config.trelloKey, "TRELLO_KEY");
+const token = requireConfigValue(config.trelloToken, "TRELLO_TOKEN");
+const boardId = requireConfigValue(config.trelloBoardId, "TRELLO_BOARD_ID");
+const callbackURL = getWebhookCallbackUrl(config);
 
 const url = new URL("https://api.trello.com/1/webhooks/");
-url.searchParams.set("key", TRELLO_KEY);
-url.searchParams.set("token", TRELLO_TOKEN);
+url.searchParams.set("key", key);
+url.searchParams.set("token", token);
 url.searchParams.set("description", "Card move listener");
 url.searchParams.set("callbackURL", callbackURL);
-url.searchParams.set("idModel", TRELLO_BOARD_ID);
+url.searchParams.set("idModel", boardId);
 url.searchParams.set("active", "true");
 
 const response = await fetch(url, {

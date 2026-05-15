@@ -1,8 +1,9 @@
 /* global TrelloPowerUp */
 
 const POWER_UP_ORIGIN = window.location.origin;
-const ICON = `${POWER_UP_ORIGIN}/power-up/icon.svg`;
-const PERMISSIONS_URL = `${POWER_UP_ORIGIN}/power-up/permissions.html`;
+const POWER_UP_PATH = "/power-ups/permission-admin-power-up";
+const ICON = `${POWER_UP_ORIGIN}${POWER_UP_PATH}/icon.svg`;
+const PERMISSIONS_URL = `${POWER_UP_ORIGIN}${POWER_UP_PATH}/permissions.html`;
 
 TrelloPowerUp.initialize({
   "board-buttons": function boardButtons(t) {

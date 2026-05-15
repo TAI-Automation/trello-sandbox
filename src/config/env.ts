@@ -4,6 +4,7 @@ import path from "node:path";
 export type AppConfig = {
   port: number;
   publicBaseUrl: string;
+  databaseUrl?: string;
   trelloKey?: string;
   trelloToken?: string;
   trelloSecret?: string;
@@ -18,6 +19,10 @@ const repoRoot = process.cwd();
 export const config: AppConfig = {
   port: Number(process.env.PORT || 3000),
   publicBaseUrl: process.env.PUBLIC_BASE_URL || "",
+  databaseUrl:
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL,
   trelloKey: process.env.TRELLO_KEY,
   trelloToken: process.env.TRELLO_TOKEN,
   trelloSecret: process.env.TRELLO_SECRET,

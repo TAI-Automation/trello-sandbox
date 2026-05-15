@@ -1,4 +1,6 @@
-import fs from "node:fs";
+import { Pool } from "pg";
+import type { AppConfig } from "../../config/env.js";
+import { requireConfigValue } from "../../config/env.js";
 
 export type PermissionEntry = {
   memberId: string;
@@ -15,125 +17,139 @@ export type LoadedMemberRestriction = {
   deniedListIds: Set<string>;
 };
 
-export type PermissionsState = {
-  mtimeMs: number | null;
-  permissions: Map<string, LoadedMemberRestriction>;
-};
+let pool: Pool | null = null;
+let schemaReady: Promise<void> | null = null;
 
-export function loadPermissionsState(filePath: string): PermissionsState {
+export function getPermissionsPool(appConfig: AppConfig): Pool {
+  if (pool) {
+    return pool;
+  }
+
+  const connectionString = requireConfigValue(
+    appConfig.databaseUrl,
+    "DATABASE_URL or POSTGRES_URL"
+  );
+
+  pool = new Pool({
+    connectionString,
+    ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined,
+  });
+
+  return pool;
+}
+
+export async function readPermissionsDocument(
+  appConfig: AppConfig,
+  boardId: string
+): Promise<PermissionsDocument> {
+  await ensurePermissionsSchema(appConfig);
+
+  const result = await getPermissionsPool(appConfig).query<{
+    member_id: string;
+    member_label: string | null;
+    denied_list_ids: string[];
+  }>(
+    `
+      select member_id, member_label, denied_list_ids
+      from permission_restrictions
+      where board_id = $1
+      order by member_label nulls last, member_id
+    `,
+    [boardId]
+  );
+
   return {
-    mtimeMs: getFileMtimeMs(filePath),
-    permissions: loadPermissions(filePath),
+    restrictedMoves: result.rows.map((row) => ({
+      memberId: row.member_id,
+      memberLabel: row.member_label || undefined,
+      deniedListIds: row.denied_list_ids,
+    })),
   };
 }
 
-export function loadPermissions(
-  filePath: string
-): Map<string, LoadedMemberRestriction> {
-  if (!fs.existsSync(filePath)) {
-    console.warn(`Permissions file not found at ${filePath}; no moves are restricted.`);
-    return new Map();
-  }
+export async function upsertPermissionEntry(
+  appConfig: AppConfig,
+  boardId: string,
+  entry: PermissionEntry
+): Promise<void> {
+  await ensurePermissionsSchema(appConfig);
 
-  const parsed = readPermissionsDocument(filePath);
-  const restrictedMoves = new Map<string, LoadedMemberRestriction>();
+  await getPermissionsPool(appConfig).query(
+    `
+      insert into permission_restrictions (
+        board_id,
+        member_id,
+        member_label,
+        denied_list_ids,
+        updated_at
+      )
+      values ($1, $2, $3, $4, now())
+      on conflict (board_id, member_id)
+      do update set
+        member_label = excluded.member_label,
+        denied_list_ids = excluded.denied_list_ids,
+        updated_at = now()
+    `,
+    [boardId, entry.memberId, entry.memberLabel || null, entry.deniedListIds]
+  );
+}
 
-  for (const entry of parsed.restrictedMoves) {
-    restrictedMoves.set(entry.memberId, {
-      memberLabel: entry.memberLabel,
-      deniedListIds: new Set(entry.deniedListIds),
-    });
-  }
+export async function loadMemberRestriction(
+  appConfig: AppConfig,
+  memberId: string,
+  candidateListIds: string[]
+): Promise<LoadedMemberRestriction | null> {
+  await ensurePermissionsSchema(appConfig);
 
-  console.log(
-    `Loaded ${restrictedMoves.size} restricted member permission set(s) from ${filePath}.`
+  const result = await getPermissionsPool(appConfig).query<{
+    member_label: string | null;
+    denied_list_ids: string[];
+  }>(
+    `
+      select member_label, denied_list_ids
+      from permission_restrictions
+      where member_id = $1
+        and denied_list_ids && $2::text[]
+      order by updated_at desc
+      limit 1
+    `,
+    [memberId, candidateListIds]
   );
 
-  return restrictedMoves;
-}
+  const row = result.rows[0];
 
-export function readPermissionsDocument(filePath: string): PermissionsDocument {
-  if (!fs.existsSync(filePath)) {
-    return { restrictedMoves: [] };
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read permissions file at ${filePath}: ${message}`);
-  }
-
-  assertPermissionsDocument(parsed);
-  return parsed;
-}
-
-export function writePermissionsDocument(
-  filePath: string,
-  document: PermissionsDocument
-): void {
-  const tmpPath = `${filePath}.tmp`;
-  fs.writeFileSync(tmpPath, `${JSON.stringify(document, null, 2)}\n`);
-  fs.renameSync(tmpPath, filePath);
-}
-
-export function getFileMtimeMs(filePath: string): number | null {
-  if (!fs.existsSync(filePath)) {
+  if (!row) {
     return null;
   }
 
-  return fs.statSync(filePath).mtimeMs;
+  return {
+    memberLabel: row.member_label || undefined,
+    deniedListIds: new Set(row.denied_list_ids),
+  };
 }
 
-function assertPermissionsDocument(value: unknown): asserts value is PermissionsDocument {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Permissions file must contain a JSON object.");
-  }
+async function ensurePermissionsSchema(appConfig: AppConfig): Promise<void> {
+  schemaReady ??= getPermissionsPool(appConfig).query(`
+    create table if not exists permission_restrictions (
+      board_id text not null,
+      member_id text not null,
+      member_label text,
+      denied_list_ids text[] not null default '{}',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      primary key (board_id, member_id)
+    );
 
-  const candidate = value as { restrictedMoves?: unknown };
+    create index if not exists permission_restrictions_member_id_idx
+      on permission_restrictions (member_id);
 
-  if (!Array.isArray(candidate.restrictedMoves)) {
-    throw new Error("Permissions file must contain a restrictedMoves array.");
-  }
+    create index if not exists permission_restrictions_denied_list_ids_idx
+      on permission_restrictions using gin (denied_list_ids);
+  `).then(() => undefined);
 
-  const seenMemberIds = new Set<string>();
+  return schemaReady;
+}
 
-  for (const [index, entry] of candidate.restrictedMoves.entries()) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error(`restrictedMoves[${index}] must be an object.`);
-    }
-
-    const permission = entry as Partial<PermissionEntry>;
-
-    if (typeof permission.memberId !== "string" || permission.memberId.trim() === "") {
-      throw new Error(`restrictedMoves[${index}].memberId must be a non-empty string.`);
-    }
-
-    if (seenMemberIds.has(permission.memberId)) {
-      throw new Error(`Duplicate restrictedMoves entry for memberId ${permission.memberId}.`);
-    }
-
-    seenMemberIds.add(permission.memberId);
-
-    if (
-      permission.memberLabel !== undefined &&
-      typeof permission.memberLabel !== "string"
-    ) {
-      throw new Error(`restrictedMoves[${index}].memberLabel must be a string when provided.`);
-    }
-
-    if (!Array.isArray(permission.deniedListIds)) {
-      throw new Error(`restrictedMoves[${index}].deniedListIds must be an array.`);
-    }
-
-    for (const [listIndex, listId] of permission.deniedListIds.entries()) {
-      if (typeof listId !== "string" || listId.trim() === "") {
-        throw new Error(
-          `restrictedMoves[${index}].deniedListIds[${listIndex}] must be a non-empty string.`
-        );
-      }
-    }
-  }
+function shouldUseSsl(connectionString: string): boolean {
+  return !connectionString.includes("localhost") && !connectionString.includes("127.0.0.1");
 }

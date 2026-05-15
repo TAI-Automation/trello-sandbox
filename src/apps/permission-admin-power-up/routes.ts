@@ -1,15 +1,15 @@
 import { Router } from "express";
-import type { AppConfig } from "../../../config/env.js";
-import { config } from "../../../config/env.js";
+import type { AppConfig } from "../../config/env.js";
+import { config } from "../../config/env.js";
 import {
   readPermissionsDocument,
-  writePermissionsDocument,
-} from "../../../core/permissions/store.js";
+  upsertPermissionEntry,
+} from "../../core/permissions/store.js";
 import {
   fetchTrelloBoard,
   fetchTrelloBoardLists,
   fetchTrelloBoardMembers,
-} from "../../../trello/api.js";
+} from "../../trello/api.js";
 import { validatePermissionUpdate } from "./validation.js";
 
 export function createPermissionAdminPowerUpRouter(
@@ -30,7 +30,7 @@ export function createPermissionAdminPowerUpRouter(
         fetchTrelloBoardMembers(boardId, appConfig),
         fetchTrelloBoardLists(boardId, appConfig),
       ]);
-      const permissionsDocument = readPermissionsDocument(appConfig.permissionsPath);
+      const permissionsDocument = await readPermissionsDocument(appConfig, boardId);
 
       return res.json({
         board,
@@ -74,23 +74,13 @@ export function createPermissionAdminPowerUpRouter(
       const deniedListIds = lists
         .filter((list) => !allowed.has(list.id))
         .map((list) => list.id);
-      const permissionsDocument = readPermissionsDocument(appConfig.permissionsPath);
-      const existingIndex = permissionsDocument.restrictedMoves.findIndex(
-        (entry) => entry.memberId === memberId
-      );
       const entry = {
         memberId,
         memberLabel,
         deniedListIds,
       };
 
-      if (existingIndex === -1) {
-        permissionsDocument.restrictedMoves.push(entry);
-      } else {
-        permissionsDocument.restrictedMoves[existingIndex] = entry;
-      }
-
-      writePermissionsDocument(appConfig.permissionsPath, permissionsDocument);
+      await upsertPermissionEntry(appConfig, boardId, entry);
 
       return res.json({ ok: true, permission: entry });
     } catch (error) {

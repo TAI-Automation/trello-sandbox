@@ -41,9 +41,7 @@ export function createPermissionEnforcerRouter(
   appConfig: AppConfig = config
 ): Router {
   const router = Router();
-  const restrictionService = new PermissionRestrictionService(
-    appConfig.permissionsPath
-  );
+  const restrictionService = new PermissionRestrictionService(appConfig);
 
   router.head("/trello/webhook", (_req, res) => {
     res.sendStatus(200);
@@ -96,7 +94,7 @@ export function createPermissionEnforcerRouter(
       console.log(`  At: ${action.date}`);
 
       const moveRestriction = memberId
-        ? restrictionService.getMoveRestriction(memberId, {
+        ? await restrictionService.getMoveRestriction(memberId, {
             sourceListId: oldListId,
             sourceListName: fromList,
             destinationListId: currentListId,

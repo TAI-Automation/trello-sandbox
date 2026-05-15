@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { AppConfig } from "../../config/env.js";
 import { config } from "../../config/env.js";
+import { getEnforcedBoard } from "../permission-enforcement-dashboard/store.js";
 import { moveCardToList } from "../../trello/api.js";
 import { isValidTrelloWebhook } from "../../trello/webhooks.js";
 import type { TrelloWebhookRequest } from "../../types/express.js";
@@ -30,11 +31,19 @@ type TrelloWebhookAction = {
     listAfter?: {
       name?: string;
     };
+    board?: {
+      id?: string;
+      name?: string;
+    };
   };
 };
 
 type TrelloWebhookBody = {
   action?: TrelloWebhookAction;
+  model?: {
+    id?: string;
+    name?: string;
+  };
 };
 
 export function createPermissionEnforcerRouter(
@@ -55,10 +64,29 @@ export function createPermissionEnforcerRouter(
       return res.sendStatus(401);
     }
 
-    const action = (req.body as TrelloWebhookBody).action;
+    const body = req.body as TrelloWebhookBody;
+    const action = body.action;
 
     if (!action) {
       return res.sendStatus(200);
+    }
+
+    const boardId = action.data?.board?.id || body.model?.id;
+
+    if (boardId) {
+      try {
+        const trackedBoard = await getEnforcedBoard(appConfig, boardId);
+
+        if (trackedBoard && !trackedBoard.enforcementEnabled) {
+          console.log(
+            `Permission enforcement skipped for disabled board ${trackedBoard.boardName} (${boardId}).`
+          );
+          return res.sendStatus(200);
+        }
+      } catch (error) {
+        console.warn("Unable to read dashboard board status; continuing with legacy enforcement.");
+        console.warn(error);
+      }
     }
 
     const oldListId = action.data?.old?.idList;
@@ -99,7 +127,7 @@ export function createPermissionEnforcerRouter(
             sourceListName: fromList,
             destinationListId: currentListId,
             destinationListName: toList,
-          })
+          }, boardId)
         : null;
 
       if (shouldIgnoreRecentReversal(cardId, currentListId)) {

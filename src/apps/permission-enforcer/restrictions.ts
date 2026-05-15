@@ -20,12 +20,13 @@ export class PermissionRestrictionService {
 
   async getMoveRestriction(
     memberId: string,
-    move: CardMove
+    move: CardMove,
+    boardId?: string
   ): Promise<MoveRestriction | null> {
     const memberRestrictions = await loadMemberRestriction(this.appConfig, memberId, [
       move.sourceListId,
       move.destinationListId,
-    ]);
+    ], boardId);
 
     if (!memberRestrictions) {
       return null;

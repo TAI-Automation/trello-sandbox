@@ -12,6 +12,7 @@ export type AppConfig = {
   repoRoot: string;
   permissionsPath: string;
   powerUpPublicPath: string;
+  permissionEnforcerAdminPublicPath: string;
 };
 
 const repoRoot = process.cwd();
@@ -32,6 +33,10 @@ export const config: AppConfig = {
   powerUpPublicPath: path.resolve(
     repoRoot,
     "public/power-ups/permission-admin-power-up"
+  ),
+  permissionEnforcerAdminPublicPath: path.resolve(
+    repoRoot,
+    "public/admin/permission-enforcer"
   ),
 };
 

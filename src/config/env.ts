@@ -8,6 +8,7 @@ export type AppConfig = {
   trelloKey?: string;
   trelloToken?: string;
   trelloSecret?: string;
+  trelloBotMemberId?: string;
   repoRoot: string;
   permissionsPath: string;
   powerUpPublicPath: string;
@@ -26,6 +27,7 @@ export const config: AppConfig = {
   trelloKey: process.env.TRELLO_KEY,
   trelloToken: process.env.TRELLO_TOKEN,
   trelloSecret: process.env.TRELLO_SECRET,
+  trelloBotMemberId: process.env.TRELLO_BOT_MEMBER_ID,
   repoRoot,
   permissionsPath: path.resolve(repoRoot, "src/core/permissions/permissions.json"),
   powerUpPublicPath: path.resolve(

@@ -126,6 +126,11 @@ export function createPermissionEnforcerRouter(
       console.log(`  To list ID: ${currentListId}`);
       console.log(`  At: ${action.date}`);
 
+      if (memberId && appConfig.trelloBotMemberId === memberId) {
+        console.log(`  Ignored: member matches TRELLO_BOT_MEMBER_ID (${memberId}).`);
+        return res.sendStatus(200);
+      }
+
       const moveRestriction = memberId
         ? await restrictionService.getMoveRestriction(memberId, {
             sourceListId: oldListId,

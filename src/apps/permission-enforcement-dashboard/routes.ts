@@ -37,7 +37,6 @@ export function createPermissionEnforcementDashboardRouter(
 
   router.get("/api/admin/permission-enforcer/boards", async (_req, res) => {
     try {
-      await importEnvBoard(appConfig);
       const boards = await listEnforcedBoards(appConfig);
       return res.json({ boards });
     } catch (error) {
@@ -120,7 +119,6 @@ export function createPermissionEnforcementDashboardRouter(
 
   router.post("/api/admin/permission-enforcer/boards/refresh", async (_req, res) => {
     try {
-      await importEnvBoard(appConfig);
       const boards = await listEnforcedBoards(appConfig);
       const webhooks = await listTrelloWebhooks(appConfig);
       const callbackURL = getWebhookCallbackUrl(appConfig);
@@ -147,34 +145,6 @@ export function createPermissionEnforcementDashboardRouter(
   });
 
   return router;
-}
-
-async function importEnvBoard(appConfig: AppConfig): Promise<void> {
-  if (!appConfig.trelloBoardId) {
-    return;
-  }
-
-  const existing = await getEnforcedBoard(appConfig, appConfig.trelloBoardId);
-
-  if (existing) {
-    return;
-  }
-
-  const board = await fetchTrelloBoard(appConfig.trelloBoardId, appConfig);
-  const webhook = await getOrCreateActiveWebhook(
-    appConfig,
-    board.id,
-    getWebhookCallbackUrl(appConfig)
-  );
-
-  await upsertEnforcedBoard(appConfig, {
-    boardId: board.id,
-    boardName: board.name,
-    enforcementEnabled: true,
-    webhookId: webhook.id,
-    webhookActive: webhook.active,
-    webhookCallbackUrl: webhook.callbackURL,
-  });
 }
 
 async function getOrCreateActiveWebhook(

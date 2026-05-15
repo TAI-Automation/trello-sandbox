@@ -27,6 +27,8 @@ const elements = {
 };
 
 init().catch(function handleInitError(error) {
+  elements.saveButton.hidden = true;
+  elements.manager.hidden = true;
   showMessage(error.message || "Failed to load permissions.", "error");
 });
 
@@ -56,7 +58,11 @@ async function init() {
 }
 
 async function loadPermissions() {
-  const response = await fetch(`/api/power-up/permissions?boardId=${encodeURIComponent(state.boardId)}`, {
+  const params = new URLSearchParams({
+    boardId: state.boardId,
+    memberId: state.currentMemberId,
+  });
+  const response = await fetch(`/api/power-up/permissions?${params.toString()}`, {
     headers: {
       Accept: "application/json",
     },
@@ -219,6 +225,7 @@ async function savePermissions() {
       },
       body: JSON.stringify({
         boardId: state.boardId,
+        adminMemberId: state.currentMemberId,
         memberId: state.selectedMemberId,
         memberLabel: member ? memberLabel(member) : state.selectedMemberId,
         allowedListIds,

@@ -1,5 +1,6 @@
 export type PermissionUpdate = {
   boardId: string;
+  adminMemberId: string;
   memberId: string;
   memberLabel: string;
   allowedListIds: string[];
@@ -16,6 +17,7 @@ export function validatePermissionUpdate(body: unknown): ValidationResult {
 
   const {
     boardId,
+    adminMemberId,
     memberId,
     memberLabel,
     allowedListIds,
@@ -23,6 +25,10 @@ export function validatePermissionUpdate(body: unknown): ValidationResult {
 
   if (typeof boardId !== "string" || boardId.trim() === "") {
     return { ok: false, error: "boardId is required." };
+  }
+
+  if (typeof adminMemberId !== "string" || adminMemberId.trim() === "") {
+    return { ok: false, error: "adminMemberId is required." };
   }
 
   if (typeof memberId !== "string" || memberId.trim() === "") {
@@ -50,6 +56,7 @@ export function validatePermissionUpdate(body: unknown): ValidationResult {
     ok: true,
     value: {
       boardId,
+      adminMemberId,
       memberId,
       memberLabel,
       allowedListIds: Array.from(new Set(allowedListIds)),

@@ -4,6 +4,7 @@ import { config, requireConfigValue } from "../config/env.js";
 export type TrelloBoard = {
   id: string;
   name: string;
+  idOrganization?: string | null;
   memberships: unknown[];
 };
 
@@ -25,6 +26,11 @@ export type TrelloWebhook = {
   idModel: string;
   callbackURL: string;
   active: boolean;
+};
+
+export type TrelloOrganizationMembership = {
+  idMember: string;
+  memberType: string;
 };
 
 function trelloUrl(pathname: string, appConfig: AppConfig = config): URL {
@@ -58,20 +64,41 @@ export async function fetchTrelloBoard(
   appConfig: AppConfig = config
 ): Promise<TrelloBoard> {
   const url = trelloUrl(`/1/boards/${boardId}`, appConfig);
-  url.searchParams.set("fields", "id,name");
+  url.searchParams.set("fields", "id,name,idOrganization");
   url.searchParams.set("memberships", "all");
 
   const board = await fetchTrelloJson<{
     id: string;
     name: string;
+    idOrganization?: string | null;
     memberships?: unknown[];
   }>(url);
 
   return {
     id: board.id,
     name: board.name,
+    idOrganization: board.idOrganization,
     memberships: Array.isArray(board.memberships) ? board.memberships : [],
   };
+}
+
+export async function fetchTrelloOrganizationMemberships(
+  organizationId: string,
+  appConfig: AppConfig = config
+): Promise<TrelloOrganizationMembership[]> {
+  const url = trelloUrl(`/1/organizations/${organizationId}/memberships`, appConfig);
+  url.searchParams.set("member", "false");
+
+  const memberships = await fetchTrelloJson<TrelloOrganizationMembership[]>(url);
+
+  if (!Array.isArray(memberships)) {
+    throw new Error("Trello returned an invalid organization memberships response.");
+  }
+
+  return memberships.map((membership) => ({
+    idMember: membership.idMember,
+    memberType: membership.memberType,
+  }));
 }
 
 export async function fetchTrelloBoardMembers(

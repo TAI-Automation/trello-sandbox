@@ -73,6 +73,11 @@ export function createPermissionEnforcerRouter(
 
     const boardId = action.data?.board?.id || body.model?.id;
 
+    if (!boardId) {
+      console.warn("Permission enforcement skipped: webhook payload did not include a board ID.");
+      return res.sendStatus(200);
+    }
+
     if (boardId) {
       try {
         const trackedBoard = await getEnforcedBoard(appConfig, boardId);

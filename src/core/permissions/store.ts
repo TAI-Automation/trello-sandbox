@@ -98,53 +98,27 @@ export async function loadMemberRestriction(
   appConfig: AppConfig,
   memberId: string,
   candidateListIds: string[],
-  boardId?: string
+  boardId: string
 ): Promise<LoadedMemberRestriction | null> {
   await ensurePermissionsSchema(appConfig);
 
-  if (boardId) {
-    const boardResult = await getPermissionsPool(appConfig).query<{
-      member_label: string | null;
-      denied_list_ids: string[];
-    }>(
-      `
-        select member_label, denied_list_ids
-        from permission_restrictions
-        where board_id = $1
-          and member_id = $2
-          and denied_list_ids && $3::text[]
-        order by updated_at desc
-        limit 1
-      `,
-      [boardId, memberId, candidateListIds]
-    );
-
-    const boardRow = boardResult.rows[0];
-
-    if (boardRow) {
-      return {
-        memberLabel: boardRow.member_label || undefined,
-        deniedListIds: new Set(boardRow.denied_list_ids),
-      };
-    }
-  }
-
-  const result = await getPermissionsPool(appConfig).query<{
+  const boardResult = await getPermissionsPool(appConfig).query<{
     member_label: string | null;
     denied_list_ids: string[];
   }>(
     `
       select member_label, denied_list_ids
       from permission_restrictions
-      where member_id = $1
-        and denied_list_ids && $2::text[]
+      where board_id = $1
+        and member_id = $2
+        and denied_list_ids && $3::text[]
       order by updated_at desc
       limit 1
     `,
-    [memberId, candidateListIds]
+    [boardId, memberId, candidateListIds]
   );
 
-  const row = result.rows[0];
+  const row = boardResult.rows[0];
 
   if (!row) {
     return null;

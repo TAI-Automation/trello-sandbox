@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "register": "tsx src/apps/permission-enforcer/registerWebhook.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },

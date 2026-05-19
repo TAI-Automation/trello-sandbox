@@ -5,7 +5,6 @@ import { getEnforcedBoard } from "../permission-enforcement-dashboard/store.js";
 import { moveCardToList } from "../../trello/api.js";
 import { isValidTrelloWebhook } from "../../trello/webhooks.js";
 import type { TrelloWebhookRequest } from "../../types/express.js";
-import { rememberReversal, shouldIgnoreRecentReversal } from "./reversals.js";
 import { PermissionRestrictionService } from "./restrictions.js";
 
 type TrelloWebhookAction = {
@@ -140,16 +139,13 @@ export function createPermissionEnforcerRouter(
           }, boardId)
         : null;
 
-      if (shouldIgnoreRecentReversal(cardId, currentListId)) {
-        console.log("  Reversal webhook ignored.");
-      } else if (!memberId) {
+      if (!memberId) {
         console.warn("  Allowed: missing action.idMemberCreator; no restriction can match.");
       } else if (!moveRestriction) {
         console.log("  Allowed: no matching restriction.");
       } else {
         try {
           await moveCardToList(cardId, oldListId, appConfig);
-          rememberReversal(cardId, oldListId);
           console.log(
             `  Denied: ${moveRestriction.memberLabel || memberId} cannot move cards ${moveRestriction.direction} denied list ${moveRestriction.listName} (${moveRestriction.listId}).`
           );

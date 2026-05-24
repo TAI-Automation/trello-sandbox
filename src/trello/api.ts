@@ -1,6 +1,3 @@
-import type { AppConfig } from "../config/env.js";
-import { config, requireConfigValue } from "../config/env.js";
-
 export type TrelloBoard = {
   id: string;
   name: string;
@@ -28,17 +25,15 @@ export type TrelloWebhook = {
   active: boolean;
 };
 
-export type TrelloOrganizationMembership = {
-  idMember: string;
-  memberType: string;
+export type TrelloCredentials = {
+  key: string;
+  token: string;
 };
 
-function trelloUrl(pathname: string, appConfig: AppConfig = config): URL {
-  const key = requireConfigValue(appConfig.trelloKey, "TRELLO_KEY");
-  const token = requireConfigValue(appConfig.trelloToken, "TRELLO_TOKEN");
+function trelloUrl(pathname: string, credentials: TrelloCredentials): URL {
   const url = new URL(pathname, "https://api.trello.com");
-  url.searchParams.set("key", key);
-  url.searchParams.set("token", token);
+  url.searchParams.set("key", credentials.key);
+  url.searchParams.set("token", credentials.token);
   return url;
 }
 
@@ -61,9 +56,9 @@ export async function fetchTrelloJson<T>(url: URL): Promise<T> {
 
 export async function fetchTrelloBoard(
   boardId: string,
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<TrelloBoard> {
-  const url = trelloUrl(`/1/boards/${boardId}`, appConfig);
+  const url = trelloUrl(`/1/boards/${boardId}`, credentials);
   url.searchParams.set("fields", "id,name,idOrganization");
   url.searchParams.set("memberships", "all");
 
@@ -82,30 +77,11 @@ export async function fetchTrelloBoard(
   };
 }
 
-export async function fetchTrelloOrganizationMemberships(
-  organizationId: string,
-  appConfig: AppConfig = config
-): Promise<TrelloOrganizationMembership[]> {
-  const url = trelloUrl(`/1/organizations/${organizationId}/memberships`, appConfig);
-  url.searchParams.set("member", "false");
-
-  const memberships = await fetchTrelloJson<TrelloOrganizationMembership[]>(url);
-
-  if (!Array.isArray(memberships)) {
-    throw new Error("Trello returned an invalid organization memberships response.");
-  }
-
-  return memberships.map((membership) => ({
-    idMember: membership.idMember,
-    memberType: membership.memberType,
-  }));
-}
-
 export async function fetchTrelloBoardMembers(
   boardId: string,
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<TrelloMember[]> {
-  const url = trelloUrl(`/1/boards/${boardId}/members`, appConfig);
+  const url = trelloUrl(`/1/boards/${boardId}/members`, credentials);
   url.searchParams.set("fields", "id,fullName,username,initials");
 
   const members = await fetchTrelloJson<TrelloMember[]>(url);
@@ -124,9 +100,9 @@ export async function fetchTrelloBoardMembers(
 
 export async function fetchTrelloBoardLists(
   boardId: string,
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<TrelloList[]> {
-  const url = trelloUrl(`/1/boards/${boardId}/lists`, appConfig);
+  const url = trelloUrl(`/1/boards/${boardId}/lists`, credentials);
   url.searchParams.set("filter", "open");
   url.searchParams.set("fields", "id,name");
 
@@ -145,9 +121,9 @@ export async function fetchTrelloBoardLists(
 export async function moveCardToList(
   cardId: string,
   listId: string,
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<void> {
-  const url = trelloUrl(`/1/cards/${cardId}`, appConfig);
+  const url = trelloUrl(`/1/cards/${cardId}`, credentials);
   url.searchParams.set("idList", listId);
 
   const response = await fetch(url, {
@@ -166,10 +142,9 @@ export async function moveCardToList(
 }
 
 export async function listTrelloWebhooks(
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<TrelloWebhook[]> {
-  const token = requireConfigValue(appConfig.trelloToken, "TRELLO_TOKEN");
-  const url = trelloUrl(`/1/tokens/${token}/webhooks`, appConfig);
+  const url = trelloUrl(`/1/tokens/${credentials.token}/webhooks`, credentials);
 
   const webhooks = await fetchTrelloJson<TrelloWebhook[]>(url);
 
@@ -189,10 +164,10 @@ export async function listTrelloWebhooks(
 export async function createTrelloWebhook(
   boardId: string,
   callbackURL: string,
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<TrelloWebhook> {
-  const url = trelloUrl("/1/webhooks/", appConfig);
-  url.searchParams.set("description", "Permission enforcement listener");
+  const url = trelloUrl("/1/webhooks/", credentials);
+  url.searchParams.set("description", "Trello webhook listener");
   url.searchParams.set("callbackURL", callbackURL);
   url.searchParams.set("idModel", boardId);
   url.searchParams.set("active", "true");
@@ -225,9 +200,9 @@ export async function createTrelloWebhook(
 export async function updateTrelloWebhookActive(
   webhookId: string,
   active: boolean,
-  appConfig: AppConfig = config
+  credentials: TrelloCredentials
 ): Promise<TrelloWebhook> {
-  const url = trelloUrl(`/1/webhooks/${webhookId}`, appConfig);
+  const url = trelloUrl(`/1/webhooks/${webhookId}`, credentials);
   url.searchParams.set("active", String(active));
 
   const response = await fetch(url, {

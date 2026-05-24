@@ -1,26 +1,26 @@
 import crypto from "node:crypto";
-import type { AppConfig } from "../config/env.js";
-import { config, getWebhookCallbackUrl } from "../config/env.js";
-import type { TrelloWebhookRequest } from "../types/express.js";
 
-export function isValidTrelloWebhook(
-  req: TrelloWebhookRequest,
-  appConfig: AppConfig = config
-): boolean {
-  const header = req.get("X-Trello-Webhook");
-  const callbackUrl = getWebhookCallbackUrl(appConfig);
+export type TrelloWebhookValidationInput = {
+  callbackUrl: string;
+  header?: string;
+  rawBody?: Buffer;
+  secret?: string;
+};
 
-  if (!header || !appConfig.trelloSecret || !callbackUrl || !req.rawBody) {
+export function isValidTrelloWebhook({
+  callbackUrl,
+  header,
+  rawBody,
+  secret,
+}: TrelloWebhookValidationInput): boolean {
+  if (!header || !secret || !callbackUrl || !rawBody) {
     return false;
   }
 
-  const content = Buffer.concat([
-    req.rawBody,
-    Buffer.from(callbackUrl, "utf8"),
-  ]);
+  const content = Buffer.concat([rawBody, Buffer.from(callbackUrl, "utf8")]);
 
   const digest = crypto
-    .createHmac("sha1", appConfig.trelloSecret)
+    .createHmac("sha1", secret)
     .update(content)
     .digest("base64");
 

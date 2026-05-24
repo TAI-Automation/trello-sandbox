@@ -1,9 +1,8 @@
 import { createApp } from "./app.js";
-import { config, getWebhookCallbackUrl } from "./config/env.js";
 
-const app = createApp(config);
+const port = Number(process.env.PORT || 3000);
+const app = createApp();
 
-app.listen(config.port, () => {
-  console.log(`Listening on http://localhost:${config.port}`);
-  console.log(`Webhook callback URL: ${getWebhookCallbackUrl(config)}`);
+app.listen(port, () => {
+  console.log(`Listening on http://localhost:${port}`);
 });

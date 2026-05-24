@@ -1,7 +1,7 @@
 {
   "name": "trello-permission-manager-suite",
   "version": "1.0.0",
-  "description": "Trello permission manager webhook and Power-Up suite.",
+  "description": "Barebones Trello plugin project shell.",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -13,17 +13,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "pg": "^8.16.3",
-    "zod": "^4.4.3"
+    "express": "^5.2.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^25.8.0",
-    "@types/pg": "^8.15.6",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

@@ -1,34 +1,19 @@
 import express from "express";
-import type { AppConfig } from "./config/env.js";
-import { config } from "./config/env.js";
-import { createPermissionAdminPowerUpRouter } from "./apps/permission-admin-power-up/routes.js";
-import { createPermissionEnforcementDashboardRouter } from "./apps/permission-enforcement-dashboard/routes.js";
-import { createPermissionEnforcerRouter } from "./apps/permission-enforcer/routes.js";
-import type { TrelloWebhookRequest } from "./types/express.js";
 
-export function createApp(appConfig: AppConfig = config): express.Express {
+export function createApp(): express.Express {
   const app = express();
 
-  app.use(
-    express.json({
-      verify: (req, _res, buf) => {
-        (req as TrelloWebhookRequest).rawBody = buf;
-      },
-    })
-  );
-
-  app.use(
-    "/power-ups/permission-admin-power-up",
-    express.static(appConfig.powerUpPublicPath)
-  );
-
   app.get("/", (_req, res) => {
-    res.send("Trello permission apps are running.");
+    res.type("html").send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trello Plugins</title>
+  </head>
+  <body></body>
+</html>`);
   });
-
-  app.use(createPermissionAdminPowerUpRouter(appConfig));
-  app.use(createPermissionEnforcementDashboardRouter(appConfig));
-  app.use(createPermissionEnforcerRouter(appConfig));
 
   return app;
 }

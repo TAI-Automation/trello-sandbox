@@ -112,9 +112,11 @@ enforcementDashboardRouter.patch(
   "/api/enforcement-dashboard/boards/:trelloBoardId/enforcement",
   requireAdminAuth,
   async (req, res, next) => {
+    const trelloBoardId = readRouteParam(req.params.trelloBoardId);
+
     try {
       const enabled = readRequiredBoolean(req.body, "enabled");
-      const board = await getRequiredBoard(req.params.trelloBoardId);
+      const board = await getRequiredBoard(trelloBoardId);
       const webhook = enabled
         ? await ensureWebhookActive(board.trelloBoardId, board.trelloWebhookId)
         : await deactivateWebhookIfPresent(board.trelloWebhookId);
@@ -127,9 +129,9 @@ enforcementDashboardRouter.patch(
 
       res.json({ board: updated });
     } catch (error) {
-      if (req.params.trelloBoardId) {
+      if (trelloBoardId) {
         await saveBoardError({
-          trelloBoardId: req.params.trelloBoardId,
+          trelloBoardId,
           error: getErrorMessage(error),
         }).catch(() => undefined);
       }
@@ -143,8 +145,10 @@ enforcementDashboardRouter.delete(
   "/api/enforcement-dashboard/boards/:trelloBoardId",
   requireAdminAuth,
   async (req, res, next) => {
+    const trelloBoardId = readRouteParam(req.params.trelloBoardId);
+
     try {
-      const board = await getRequiredBoard(req.params.trelloBoardId);
+      const board = await getRequiredBoard(trelloBoardId);
 
       await deactivateWebhookIfPresent(board.trelloWebhookId);
 
@@ -154,9 +158,9 @@ enforcementDashboardRouter.delete(
 
       res.status(204).send();
     } catch (error) {
-      if (req.params.trelloBoardId) {
+      if (trelloBoardId) {
         await saveBoardError({
-          trelloBoardId: req.params.trelloBoardId,
+          trelloBoardId,
           error: getErrorMessage(error),
         }).catch(() => undefined);
       }
@@ -277,6 +281,14 @@ function normalizeBoardId(value: string): string {
   }
 
   return boardId;
+}
+
+function readRouteParam(value: string | string[] | undefined): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  throw new BadRequestError("trelloBoardId route parameter is required.");
 }
 
 function readRequiredString(body: unknown, key: string): string {

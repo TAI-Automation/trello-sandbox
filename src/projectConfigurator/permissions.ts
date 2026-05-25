@@ -22,8 +22,10 @@ export type ProjectConfiguratorCapabilities = {
   canViewDepartmentManagers: boolean;
   canCreateDepartments: boolean;
   canAssignDepartmentManagers: boolean;
+  canRevokeDepartmentManagers: boolean;
   canCreateProjectsInDepartmentIds: string[];
   canAssignProjectManagersInDepartmentIds: string[];
+  canRevokeProjectManagersInDepartmentIds: string[];
   canDeleteProjectsInDepartmentIds: string[];
 };
 
@@ -88,8 +90,10 @@ export function resolveCapabilities(
       ),
     canCreateDepartments: isAdmin,
     canAssignDepartmentManagers: isAdmin,
+    canRevokeDepartmentManagers: isAdmin,
     canCreateProjectsInDepartmentIds: canManageDepartments,
     canAssignProjectManagersInDepartmentIds: canManageDepartments,
+    canRevokeProjectManagersInDepartmentIds: canManageDepartments,
     canDeleteProjectsInDepartmentIds: canManageDepartments,
   };
 }
@@ -120,6 +124,16 @@ export function canAssignProjectManagersInDepartment(
 ): boolean {
   return canUseDepartmentCapability(
     capabilities.canAssignProjectManagersInDepartmentIds,
+    departmentId
+  );
+}
+
+export function canRevokeProjectManagersInDepartment(
+  capabilities: ProjectConfiguratorCapabilities,
+  departmentId: string
+): boolean {
+  return canUseDepartmentCapability(
+    capabilities.canRevokeProjectManagersInDepartmentIds,
     departmentId
   );
 }

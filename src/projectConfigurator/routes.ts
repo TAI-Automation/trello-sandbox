@@ -11,12 +11,15 @@ import {
   createProject,
   deleteProject,
   getProjectDepartmentId,
+  removeDepartmentManager,
+  removeProjectManager,
   updateDepartmentColor,
 } from "./repository.js";
 import {
   canAssignProjectManagersInDepartment,
   canDeleteProjectsInDepartment,
   canManageDepartment,
+  canRevokeProjectManagersInDepartment,
   getTrelloCredentials,
   resolveCapabilities,
   resolveProjectConfiguratorViewer,
@@ -185,6 +188,41 @@ projectConfiguratorRouter.post(
   }
 );
 
+projectConfiguratorRouter.delete(
+  "/api/project-configurator/departments/:departmentId/managers",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const managerTrelloMemberId = readRequiredString(
+        req.body,
+        "managerTrelloMemberId"
+      );
+      const { capabilities } = await resolveViewerAndCapabilities(
+        trelloMemberId
+      );
+
+      if (!capabilities.canRevokeDepartmentManagers) {
+        throw new ForbiddenError(
+          "Only Workspace admins can revoke department managers."
+        );
+      }
+
+      if (!(await activeDepartmentExists(req.params.departmentId))) {
+        throw new NotFoundError("Department was not found.");
+      }
+
+      await removeDepartmentManager({
+        departmentId: req.params.departmentId,
+        managerTrelloMemberId,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 projectConfiguratorRouter.post(
   "/api/project-configurator/projects",
   async (req, res, next) => {
@@ -255,6 +293,50 @@ projectConfiguratorRouter.post(
         projectId: req.params.projectId,
         managerTrelloMemberId,
         grantedByMemberId: trelloMemberId,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.delete(
+  "/api/project-configurator/projects/:projectId/managers",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const managerTrelloMemberId = readRequiredString(
+        req.body,
+        "managerTrelloMemberId"
+      );
+      const projectDepartmentId = await getProjectDepartmentId(
+        req.params.projectId
+      );
+
+      if (!projectDepartmentId) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const { capabilities } = await resolveViewerAndCapabilities(
+        trelloMemberId
+      );
+
+      if (
+        !canRevokeProjectManagersInDepartment(
+          capabilities,
+          projectDepartmentId
+        )
+      ) {
+        throw new ForbiddenError(
+          "Only Workspace admins and assigned department managers can revoke project managers."
+        );
+      }
+
+      await removeProjectManager({
+        projectId: req.params.projectId,
+        managerTrelloMemberId,
       });
 
       res.status(204).send();

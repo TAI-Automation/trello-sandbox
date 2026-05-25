@@ -434,6 +434,20 @@ export async function addDepartmentManager(input: {
   );
 }
 
+export async function removeDepartmentManager(input: {
+  departmentId: string;
+  managerTrelloMemberId: string;
+}): Promise<void> {
+  await getDbPool().query(
+    `
+      delete from department_managers
+      where department_id = $1
+        and trello_member_id = $2
+    `,
+    [input.departmentId, input.managerTrelloMemberId]
+  );
+}
+
 export async function addProjectManager(input: {
   projectId: string;
   managerTrelloMemberId: string;
@@ -455,6 +469,20 @@ export async function addProjectManager(input: {
       on conflict (project_id, trello_member_id) do nothing
     `,
     [input.projectId, input.managerTrelloMemberId, input.grantedByMemberId]
+  );
+}
+
+export async function removeProjectManager(input: {
+  projectId: string;
+  managerTrelloMemberId: string;
+}): Promise<void> {
+  await getDbPool().query(
+    `
+      delete from project_managers
+      where project_id = $1
+        and trello_member_id = $2
+    `,
+    [input.projectId, input.managerTrelloMemberId]
   );
 }
 

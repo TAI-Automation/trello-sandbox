@@ -280,6 +280,23 @@
         padding: 10px 12px;
       }
 
+      .manager-items {
+        display: grid;
+        gap: 6px;
+      }
+
+      .manager-row {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .manager-row .meta {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
       .project {
         align-items: start;
         background: var(--surface);
@@ -323,6 +340,12 @@
         background: #ffebe6;
         border-color: var(--danger-border);
         color: var(--danger);
+      }
+
+      .icon-button.subtle-danger {
+        font-size: 13px;
+        min-height: 24px;
+        width: 24px;
       }
 
       .empty,
@@ -442,6 +465,50 @@
               : item.displayName;
           })
           .join(", ");
+      }
+
+      function managerLabel(item) {
+        return item.username
+          ? item.displayName + " (" + item.username + ")"
+          : item.displayName;
+      }
+
+      function renderManagers(items, options) {
+        if (!items || items.length === 0) {
+          return '<p class="meta">No managers assigned</p>';
+        }
+
+        return (
+          '<div class="manager-items">' +
+          items
+            .map(function (item) {
+              var label = managerLabel(item);
+              var revokeButton = options.canRevoke
+                ? '<button type="button" class="icon-button subtle-danger" title="' +
+                  escapeHtml(options.titlePrefix + " " + label) +
+                  '" aria-label="' +
+                  escapeHtml(options.titlePrefix + " " + label) +
+                  '" ' +
+                  options.attribute +
+                  '="' +
+                  escapeHtml(options.ownerId) +
+                  '" data-manager-member-id="' +
+                  escapeHtml(item.trelloMemberId) +
+                  '">&times;</button>'
+                : "";
+
+              return (
+                '<div class="manager-row">' +
+                '<p class="meta">' +
+                escapeHtml(label) +
+                "</p>" +
+                revokeButton +
+                "</div>"
+              );
+            })
+            .join("") +
+          "</div>"
+        );
       }
 
       function memberOptions() {
@@ -900,6 +967,17 @@
         return ids.indexOf("*") !== -1 || ids.indexOf(project.departmentId) !== -1;
       }
 
+      function canRevokeDepartmentManager() {
+        return currentState.capabilities.canRevokeDepartmentManagers === true;
+      }
+
+      function canRevokeProjectManager(project) {
+        var ids =
+          currentState.capabilities.canRevokeProjectManagersInDepartmentIds || [];
+
+        return ids.indexOf("*") !== -1 || ids.indexOf(project.departmentId) !== -1;
+      }
+
       async function deleteProjectById(projectId) {
         var project = currentState.projects.find(function (item) {
           return item.id === projectId;
@@ -941,6 +1019,45 @@
 
           await loadState();
           showMessage(message, false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function revokeManager(button, type) {
+        showMessage("", false);
+
+        try {
+          button.disabled = true;
+
+          var ownerId =
+            type === "department"
+              ? String(button.getAttribute("data-revoke-department-manager") || "")
+              : String(button.getAttribute("data-revoke-project-manager") || "");
+          var managerTrelloMemberId = String(
+            button.getAttribute("data-manager-member-id") || ""
+          );
+
+          if (!ownerId || !managerTrelloMemberId) {
+            throw new Error("Could not identify the manager assignment.");
+          }
+
+          await apiRequest(
+            "/api/project-configurator/" +
+              (type === "department" ? "departments" : "projects") +
+              "/" +
+              encodeURIComponent(ownerId) +
+              "/managers",
+            {
+              managerTrelloMemberId: managerTrelloMemberId,
+            },
+            "DELETE"
+          );
+
+          await loadState();
+          showMessage("Manager status revoked.", false);
         } catch (error) {
           showMessage(error.message || error, true);
         } finally {
@@ -1039,9 +1156,14 @@
             var projects = projectsByDepartment[department.id] || [];
             var managers = departmentManagers[department.id] || [];
             var managerHtml = state.capabilities.canViewDepartmentManagers
-              ? '<div class="manager-list"><p class="meta">Department managers: ' +
-                escapeHtml(managerNames(managers)) +
-                "</p></div>"
+              ? '<div class="manager-list"><p class="meta">Department managers</p>' +
+                renderManagers(managers, {
+                  attribute: "data-revoke-department-manager",
+                  canRevoke: canRevokeDepartmentManager(),
+                  ownerId: department.id,
+                  titlePrefix: "Revoke department manager status from",
+                }) +
+                "</div>"
               : "";
             var projectsHtml =
               projects.length === 0
@@ -1066,9 +1188,15 @@
                         '<p class="meta">Label: ' +
                         escapeHtml(project.labelText) +
                         "</p>" +
-                        '<p class="meta">Project managers: ' +
-                        escapeHtml(managerNames(projectManagers[project.id] || [])) +
-                        "</p>" +
+                        '<div class="manager-list">' +
+                        '<p class="meta">Project managers</p>' +
+                        renderManagers(projectManagers[project.id] || [], {
+                          attribute: "data-revoke-project-manager",
+                          canRevoke: canRevokeProjectManager(project),
+                          ownerId: project.id,
+                          titlePrefix: "Revoke project manager status from",
+                        }) +
+                        "</div>" +
                         "</div>" +
                         deleteButton +
                         "</div>" +
@@ -1103,6 +1231,20 @@
           .forEach(function (button) {
             button.addEventListener("click", function () {
               deleteProjectFromCard(button);
+            });
+          });
+        departments
+          .querySelectorAll("button[data-revoke-department-manager]")
+          .forEach(function (button) {
+            button.addEventListener("click", function () {
+              revokeManager(button, "department");
+            });
+          });
+        departments
+          .querySelectorAll("button[data-revoke-project-manager]")
+          .forEach(function (button) {
+            button.addEventListener("click", function () {
+              revokeManager(button, "project");
             });
           });
       }

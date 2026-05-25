@@ -510,6 +510,52 @@ export async function getBoardProjectLabel(input: {
   return row ? mapBoardProjectLabel(row) : null;
 }
 
+export async function listBoardProjectLabels(
+  trelloBoardId: string,
+  client?: pg.PoolClient
+): Promise<BoardProjectLabelSummary[]> {
+  const result = await db(client).query<BoardProjectLabelRow>(
+    `
+      select
+        trello_board_id,
+        project_id::text,
+        trello_label_id,
+        synced_label_text,
+        synced_color
+      from board_project_labels
+      where trello_board_id = $1
+      order by project_id asc
+    `,
+    [trelloBoardId]
+  );
+
+  return result.rows.map(mapBoardProjectLabel);
+}
+
+export async function getBoardProjectLabelByTrelloLabelId(input: {
+  trelloBoardId: string;
+  trelloLabelId: string;
+}): Promise<BoardProjectLabelSummary | null> {
+  const result = await getDbPool().query<BoardProjectLabelRow>(
+    `
+      select
+        trello_board_id,
+        project_id::text,
+        trello_label_id,
+        synced_label_text,
+        synced_color
+      from board_project_labels
+      where trello_board_id = $1
+        and trello_label_id = $2
+    `,
+    [input.trelloBoardId, input.trelloLabelId]
+  );
+
+  const row = result.rows[0];
+
+  return row ? mapBoardProjectLabel(row) : null;
+}
+
 export async function markBoardProjectLabelSynced(input: {
   trelloBoardId: string;
   projectId: string;

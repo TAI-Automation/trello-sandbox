@@ -259,6 +259,27 @@
         justify-content: flex-end;
       }
 
+      .safe-list-items {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .safe-list-item {
+        align-items: center;
+        background: var(--soft);
+        border-radius: 6px;
+        display: inline-flex;
+        gap: 8px;
+        min-height: 34px;
+        padding: 4px 6px 4px 10px;
+      }
+
+      .safe-list-item button {
+        min-height: 26px;
+        padding: 3px 8px;
+      }
+
       .empty {
         color: var(--muted);
         padding: 24px 10px;
@@ -338,6 +359,18 @@
         <section id="message"></section>
 
         <section class="panel">
+          <h2>Safe lists</h2>
+          <form class="toolbar" id="addSafeListForm">
+            <label>
+              List name
+              <input name="name" placeholder="Ready for Review" required />
+            </label>
+            <button type="submit">Add safe list</button>
+          </form>
+          <div class="safe-list-items" id="safeLists"></div>
+        </section>
+
+        <section class="panel">
           <div class="table-wrap">
             <table>
               <thead>
@@ -359,6 +392,7 @@
 
     <script>
       var boards = [];
+      var safeLists = [];
 
       function escapeHtml(value) {
         return String(value)
@@ -453,6 +487,33 @@
         });
       }
 
+      function renderSafeLists() {
+        var target = document.getElementById("safeLists");
+
+        if (safeLists.length === 0) {
+          target.innerHTML = '<div class="empty">No safe lists configured.</div>';
+          return;
+        }
+
+        target.innerHTML = safeLists
+          .map(function (safeList) {
+            return (
+              '<span class="safe-list-item"><span>' +
+              escapeHtml(safeList.name) +
+              '</span><button type="button" class="danger" data-remove-safe-list="' +
+              escapeHtml(safeList.id) +
+              '">Remove</button></span>'
+            );
+          })
+          .join("");
+
+        target.querySelectorAll("[data-remove-safe-list]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            removeSafeList(button);
+          });
+        });
+      }
+
       async function apiRequest(url, options) {
         var response = await fetch(
           url,
@@ -485,8 +546,10 @@
       async function loadState() {
         var state = await apiRequest("/api/enforcement-dashboard/state");
         boards = state.boards || [];
+        safeLists = state.safeLists || [];
         showDashboard();
         renderBoards();
+        renderSafeLists();
       }
 
       async function login(event) {
@@ -553,6 +616,61 @@
         }
       }
 
+      async function addSafeList(event) {
+        event.preventDefault();
+        showMessage("", false);
+
+        var form = event.currentTarget;
+        var button = form.querySelector("button");
+        var formData = new FormData(form);
+
+        try {
+          button.disabled = true;
+          await apiRequest("/api/enforcement-dashboard/safe-lists", {
+            method: "POST",
+            body: JSON.stringify({
+              name: String(formData.get("name") || "").trim(),
+            }),
+          });
+          form.reset();
+          await loadState();
+          showMessage("Safe list saved.", false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function removeSafeList(button) {
+        var safeListId = button.getAttribute("data-remove-safe-list");
+        var safeList = safeLists.find(function (item) {
+          return item.id === safeListId;
+        });
+        var label = safeList ? safeList.name : "this safe list";
+
+        if (!window.confirm("Remove " + label + "?")) {
+          return;
+        }
+
+        showMessage("", false);
+        button.disabled = true;
+
+        try {
+          await apiRequest(
+            "/api/enforcement-dashboard/safe-lists/" +
+              encodeURIComponent(safeListId),
+            { method: "DELETE" }
+          );
+          await loadState();
+          showMessage("Safe list removed.", false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
       async function updateEnforcement(input) {
         showMessage("", false);
         input.disabled = true;
@@ -606,6 +724,9 @@
 
       document.getElementById("loginForm").addEventListener("submit", login);
       document.getElementById("addBoardForm").addEventListener("submit", addBoard);
+      document
+        .getElementById("addSafeListForm")
+        .addEventListener("submit", addSafeList);
       document.getElementById("logoutButton").addEventListener("click", logout);
 
       fetch("/api/enforcement-dashboard/session")

@@ -20,11 +20,17 @@ import { syncProjectLabelsForBoard } from "../projectConfigurator/labelSync.js";
 import { getTrelloCredentials } from "../projectConfigurator/permissions.js";
 import {
   createTrelloWebhook,
+  fetchTrelloWebhook,
   fetchTrelloBoard,
   updateTrelloWebhookActive,
   type TrelloWebhook,
 } from "../trello/api.js";
-import { isValidTrelloWebhook } from "../trello/webhooks.js";
+import {
+  addSafeList,
+  listSafeLists,
+  removeSafeList,
+} from "../db/repositories/safeLists.js";
+import { getPermissionManagerWebhookCallbackUrl } from "../permissionManagerEnforcer/config.js";
 
 export const enforcementDashboardRouter = express.Router();
 
@@ -67,7 +73,12 @@ enforcementDashboardRouter.get(
   requireAdminAuth,
   async (_req, res, next) => {
     try {
-      res.json({ boards: await listDashboardBoards() });
+      const [boards, safeLists] = await Promise.all([
+        listDashboardBoards(),
+        listSafeLists(),
+      ]);
+
+      res.json({ boards, safeLists });
     } catch (error) {
       next(error);
     }
@@ -141,6 +152,51 @@ enforcementDashboardRouter.patch(
   }
 );
 
+enforcementDashboardRouter.get(
+  "/api/enforcement-dashboard/safe-lists",
+  requireAdminAuth,
+  async (_req, res, next) => {
+    try {
+      res.json({ safeLists: await listSafeLists() });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+enforcementDashboardRouter.post(
+  "/api/enforcement-dashboard/safe-lists",
+  requireAdminAuth,
+  async (req, res, next) => {
+    try {
+      const name = readRequiredString(req.body, "name");
+      const safeList = await addSafeList(name);
+
+      res.status(201).json({ safeList });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+enforcementDashboardRouter.delete(
+  "/api/enforcement-dashboard/safe-lists/:safeListId",
+  requireAdminAuth,
+  async (req, res, next) => {
+    try {
+      const safeListId = readRouteParam(req.params.safeListId);
+
+      if (!(await removeSafeList(safeListId))) {
+        throw new NotFoundError("Safe list was not found.");
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 enforcementDashboardRouter.delete(
   "/api/enforcement-dashboard/boards/:trelloBoardId",
   requireAdminAuth,
@@ -170,36 +226,6 @@ enforcementDashboardRouter.delete(
   }
 );
 
-enforcementDashboardRouter.head(
-  "/api/enforcement-dashboard/webhook",
-  (_req, res) => {
-    res.status(200).send();
-  }
-);
-
-enforcementDashboardRouter.post(
-  "/api/enforcement-dashboard/webhook",
-  (req, res, next) => {
-    try {
-      const rawBody = (req as express.Request & { rawBody?: Buffer }).rawBody;
-      const valid = isValidTrelloWebhook({
-        callbackUrl: getWebhookCallbackUrl(),
-        header: req.header("x-trello-webhook"),
-        rawBody,
-        secret: getTrelloSecret(),
-      });
-
-      if (!valid) {
-        throw new UnauthorizedError("Invalid Trello webhook signature.");
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
 async function getRequiredBoard(trelloBoardId: string) {
   const board = await getDashboardBoard(trelloBoardId);
 
@@ -214,17 +240,32 @@ async function ensureWebhookActive(
   trelloBoardId: string,
   webhookId: string | null
 ): Promise<TrelloWebhook> {
+  const callbackUrl = getPermissionManagerWebhookCallbackUrl();
+
   if (webhookId) {
     try {
-      return await updateTrelloWebhookActive(
+      const webhook = await fetchTrelloWebhook(
         webhookId,
-        true,
         getTrelloCredentials()
       );
+
+      if (webhook.callbackURL === callbackUrl) {
+        return updateTrelloWebhookActive(
+          webhookId,
+          true,
+          getTrelloCredentials()
+        );
+      }
+
+      await updateTrelloWebhookActive(
+        webhookId,
+        false,
+        getTrelloCredentials()
+      ).catch(() => undefined);
     } catch {
       return createTrelloWebhook(
         trelloBoardId,
-        getWebhookCallbackUrl(),
+        callbackUrl,
         getTrelloCredentials()
       );
     }
@@ -232,7 +273,7 @@ async function ensureWebhookActive(
 
   return createTrelloWebhook(
     trelloBoardId,
-    getWebhookCallbackUrl(),
+    callbackUrl,
     getTrelloCredentials()
   );
 }
@@ -245,30 +286,6 @@ async function deactivateWebhookIfPresent(
   }
 
   return updateTrelloWebhookActive(webhookId, false, getTrelloCredentials());
-}
-
-function getWebhookCallbackUrl(): string {
-  return `${getPublicBaseUrl()}/api/enforcement-dashboard/webhook`;
-}
-
-function getPublicBaseUrl(): string {
-  const publicBaseUrl = process.env.PUBLIC_BASE_URL?.replace(/\/+$/, "");
-
-  if (!publicBaseUrl) {
-    throw new Error("PUBLIC_BASE_URL is required.");
-  }
-
-  return publicBaseUrl;
-}
-
-function getTrelloSecret(): string {
-  const secret = process.env.TRELLO_SECRET;
-
-  if (!secret) {
-    throw new Error("TRELLO_SECRET is required.");
-  }
-
-  return secret;
 }
 
 function normalizeBoardId(value: string): string {

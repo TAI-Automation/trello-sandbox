@@ -31,6 +31,14 @@ export type TrelloLabel = {
   color: string;
 };
 
+export type TrelloCard = {
+  id: string;
+  idBoard: string;
+  idList: string;
+  closed: boolean;
+  idLabels: string[];
+};
+
 export type TrelloWebhook = {
   id: string;
   description?: string;
@@ -236,6 +244,80 @@ export async function moveCardToList(
   }
 }
 
+export async function moveCard(
+  input: {
+    cardId: string;
+    listId?: string;
+    boardId?: string;
+  },
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/cards/${input.cardId}`, credentials);
+
+  if (input.listId) {
+    url.searchParams.set("idList", input.listId);
+  }
+
+  if (input.boardId) {
+    url.searchParams.set("idBoard", input.boardId);
+  }
+
+  await sendTrelloRequest(url, "PUT");
+}
+
+export async function setCardClosed(
+  cardId: string,
+  closed: boolean,
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/cards/${cardId}`, credentials);
+  url.searchParams.set("closed", String(closed));
+
+  await sendTrelloRequest(url, "PUT");
+}
+
+export async function deleteTrelloCard(
+  cardId: string,
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/cards/${cardId}`, credentials);
+
+  await sendTrelloRequest(url, "DELETE");
+}
+
+export async function fetchTrelloCard(
+  cardId: string,
+  credentials: TrelloCredentials
+): Promise<TrelloCard> {
+  const url = trelloUrl(`/1/cards/${cardId}`, credentials);
+  url.searchParams.set("fields", "id,idBoard,idList,closed,idLabels");
+
+  const card = await fetchTrelloJson<TrelloCard>(url);
+
+  return normalizeTrelloCard(card);
+}
+
+export async function addLabelToCard(
+  cardId: string,
+  labelId: string,
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/cards/${cardId}/idLabels`, credentials);
+  url.searchParams.set("value", labelId);
+
+  await sendTrelloRequest(url, "POST");
+}
+
+export async function removeLabelFromCard(
+  cardId: string,
+  labelId: string,
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/cards/${cardId}/idLabels/${labelId}`, credentials);
+
+  await sendTrelloRequest(url, "DELETE");
+}
+
 export async function createTrelloLabel(
   input: {
     boardId: string;
@@ -295,6 +377,15 @@ export async function updateTrelloLabel(
   return normalizeTrelloLabel((await response.json()) as TrelloLabel);
 }
 
+export async function deleteTrelloLabel(
+  labelId: string,
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/labels/${labelId}`, credentials);
+
+  await sendTrelloRequest(url, "DELETE");
+}
+
 export async function listTrelloBoardLabels(
   boardId: string,
   credentials: TrelloCredentials
@@ -311,6 +402,42 @@ export async function listTrelloBoardLabels(
   return labels.map(normalizeTrelloLabel);
 }
 
+export async function updateTrelloList(
+  input: {
+    listId: string;
+    name?: string;
+    closed?: boolean;
+    boardId?: string;
+  },
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(`/1/lists/${input.listId}`, credentials);
+
+  if (input.name !== undefined) {
+    url.searchParams.set("name", input.name);
+  }
+
+  if (input.closed !== undefined) {
+    url.searchParams.set("closed", String(input.closed));
+  }
+
+  if (input.boardId !== undefined) {
+    url.searchParams.set("idBoard", input.boardId);
+  }
+
+  await sendTrelloRequest(url, "PUT");
+}
+
+function normalizeTrelloCard(card: TrelloCard): TrelloCard {
+  return {
+    id: card.id,
+    idBoard: card.idBoard,
+    idList: card.idList,
+    closed: Boolean(card.closed),
+    idLabels: Array.isArray(card.idLabels) ? card.idLabels : [],
+  };
+}
+
 function normalizeTrelloLabel(label: TrelloLabel): TrelloLabel {
   return {
     id: label.id,
@@ -318,6 +445,16 @@ function normalizeTrelloLabel(label: TrelloLabel): TrelloLabel {
     name: label.name,
     color: label.color,
   };
+}
+
+export async function fetchTrelloWebhook(
+  webhookId: string,
+  credentials: TrelloCredentials
+): Promise<TrelloWebhook> {
+  const url = trelloUrl(`/1/webhooks/${webhookId}`, credentials);
+  const webhook = await fetchTrelloJson<TrelloWebhook>(url);
+
+  return normalizeTrelloWebhook(webhook);
 }
 
 export async function listTrelloWebhooks(
@@ -331,13 +468,7 @@ export async function listTrelloWebhooks(
     throw new Error("Trello returned an invalid webhooks response.");
   }
 
-  return webhooks.map((webhook) => ({
-    id: webhook.id,
-    description: webhook.description,
-    idModel: webhook.idModel,
-    callbackURL: webhook.callbackURL,
-    active: Boolean(webhook.active),
-  }));
+  return webhooks.map(normalizeTrelloWebhook);
 }
 
 export async function createTrelloWebhook(
@@ -367,13 +498,7 @@ export async function createTrelloWebhook(
 
   const webhook = (await response.json()) as TrelloWebhook;
 
-  return {
-    id: webhook.id,
-    description: webhook.description,
-    idModel: webhook.idModel,
-    callbackURL: webhook.callbackURL,
-    active: Boolean(webhook.active),
-  };
+  return normalizeTrelloWebhook(webhook);
 }
 
 export async function updateTrelloWebhookActive(
@@ -400,6 +525,10 @@ export async function updateTrelloWebhookActive(
 
   const webhook = (await response.json()) as TrelloWebhook;
 
+  return normalizeTrelloWebhook(webhook);
+}
+
+function normalizeTrelloWebhook(webhook: TrelloWebhook): TrelloWebhook {
   return {
     id: webhook.id,
     description: webhook.description,
@@ -407,4 +536,23 @@ export async function updateTrelloWebhookActive(
     callbackURL: webhook.callbackURL,
     active: Boolean(webhook.active),
   };
+}
+
+async function sendTrelloRequest(
+  url: URL,
+  method: "DELETE" | "POST" | "PUT"
+): Promise<void> {
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    );
+  }
 }

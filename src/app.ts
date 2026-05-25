@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { enforcementDashboardRouter } from "./enforcementDashboard/routes.js";
+import { permissionManagerEnforcerRouter } from "./permissionManagerEnforcer/routes.js";
 import { projectConfiguratorRouter } from "./projectConfigurator/routes.js";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -21,6 +22,7 @@ export function createApp(): express.Express {
     })
   );
   app.use(express.static(publicDir));
+  app.use(permissionManagerEnforcerRouter);
   app.use(enforcementDashboardRouter);
   app.use(projectConfiguratorRouter);
 

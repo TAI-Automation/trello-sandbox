@@ -1,16 +1,18 @@
 import {
   createTrelloLabel,
+  deleteTrelloLabel,
   listTrelloBoardLabels,
   type TrelloLabel,
   updateTrelloLabel,
 } from "../trello/api.js";
 import { getTrelloCredentials } from "./permissions.js";
 import {
-  getBoardProjectLabel,
   listActiveProjects,
+  listBoardProjectLabels,
   listLabelSyncBoards,
   markBoardProjectLabelError,
   markBoardProjectLabelSynced,
+  type BoardProjectLabelSummary,
   type ManagedBoardSummary,
   type ProjectSummary,
 } from "./repository.js";
@@ -32,16 +34,11 @@ export async function syncAllProjectLabels(): Promise<ProjectLabelSyncResult> {
   let failed = 0;
 
   for (const board of boards) {
-    for (const project of projects) {
-      attempted += 1;
+    const result = await syncProjectLabelsForBoardWithProjects(board, projects);
 
-      try {
-        await syncProjectLabel(board, project);
-        synced += 1;
-      } catch {
-        failed += 1;
-      }
-    }
+    attempted += result.attempted;
+    synced += result.synced;
+    failed += result.failed;
   }
 
   return { attempted, synced, failed };
@@ -51,6 +48,49 @@ export async function syncProjectLabelsForBoard(
   board: ManagedBoardSummary
 ): Promise<ProjectLabelSyncResult> {
   const projects = await listActiveProjects();
+
+  return syncProjectLabelsForBoardWithProjects(board, projects);
+}
+
+async function syncProjectLabelsForBoardWithProjects(
+  board: ManagedBoardSummary,
+  projects: ProjectSummary[]
+): Promise<ProjectLabelSyncResult> {
+  const credentials = getTrelloCredentials();
+  const [trelloLabels, trackedLabels] = await Promise.all([
+    listTrelloBoardLabels(board.trelloBoardId, credentials),
+    listBoardProjectLabels(board.trelloBoardId),
+  ]);
+  const trackedLabelIds = new Set(
+    trackedLabels
+      .map((label) => label.trelloLabelId)
+      .filter((labelId) => !labelId.startsWith("sync-error-"))
+  );
+  const deletedLabelIds = new Set<string>();
+
+  for (const label of trelloLabels) {
+    if (
+      isProjectLabelName(label.name) &&
+      !trackedLabelIds.has(label.id)
+    ) {
+      try {
+        await deleteTrelloLabel(label.id, credentials);
+        deletedLabelIds.add(label.id);
+      } catch {
+        // Continue syncing managed labels even if cleanup of one rogue label fails.
+      }
+    }
+  }
+
+  const remainingTrelloLabels = trelloLabels.filter(
+    (label) => !deletedLabelIds.has(label.id)
+  );
+  const trelloLabelsById = new Map(
+    remainingTrelloLabels.map((label) => [label.id, label])
+  );
+  const trackedLabelsByProjectId = new Map(
+    trackedLabels.map((label) => [label.projectId, label])
+  );
   let attempted = 0;
   let synced = 0;
   let failed = 0;
@@ -59,7 +99,12 @@ export async function syncProjectLabelsForBoard(
     attempted += 1;
 
     try {
-      await syncProjectLabel(board, project);
+      await syncProjectLabel({
+        board,
+        project,
+        trackedLabel: trackedLabelsByProjectId.get(project.id) ?? null,
+        trelloLabelsById,
+      });
       synced += 1;
     } catch {
       failed += 1;
@@ -69,23 +114,22 @@ export async function syncProjectLabelsForBoard(
   return { attempted, synced, failed };
 }
 
-async function syncProjectLabel(
-  board: ManagedBoardSummary,
-  project: ProjectSummary
-): Promise<void> {
+async function syncProjectLabel(input: {
+  board: ManagedBoardSummary;
+  project: ProjectSummary;
+  trackedLabel: BoardProjectLabelSummary | null;
+  trelloLabelsById: Map<string, TrelloLabel>;
+}): Promise<void> {
   const credentials = getTrelloCredentials();
-  const existing = await getBoardProjectLabel({
-    trelloBoardId: board.trelloBoardId,
-    projectId: project.id,
-  });
+  const { board, project, trackedLabel, trelloLabelsById } = input;
 
   try {
     const existingLabelId =
-      existing?.trelloLabelId &&
-      !existing.trelloLabelId.startsWith("sync-error-")
-        ? existing.trelloLabelId
+      trackedLabel?.trelloLabelId &&
+      !trackedLabel.trelloLabelId.startsWith("sync-error-")
+        ? trackedLabel.trelloLabelId
         : "";
-    const label = existingLabelId
+    const label = existingLabelId && trelloLabelsById.has(existingLabelId)
       ? await updateTrelloLabel(
           {
             labelId: existingLabelId,
@@ -94,7 +138,14 @@ async function syncProjectLabel(
           },
           credentials
         )
-      : await reuseOrCreateTrelloLabel(board, project, credentials);
+      : await createTrelloLabel(
+          {
+            boardId: board.trelloBoardId,
+            name: project.labelText,
+            color: project.departmentColor,
+          },
+          credentials
+        );
 
     await markBoardProjectLabelSynced({
       trelloBoardId: board.trelloBoardId,
@@ -116,38 +167,6 @@ async function syncProjectLabel(
   }
 }
 
-async function reuseOrCreateTrelloLabel(
-  board: ManagedBoardSummary,
-  project: ProjectSummary,
-  credentials: ReturnType<typeof getTrelloCredentials>
-): Promise<TrelloLabel> {
-  return (
-    (await findReusableTrelloLabel(board, project, credentials)) ??
-    (await createTrelloLabel(
-      {
-        boardId: board.trelloBoardId,
-        name: project.labelText,
-        color: project.departmentColor,
-      },
-      credentials
-    ))
-  );
-}
-
-async function findReusableTrelloLabel(
-  board: ManagedBoardSummary,
-  project: ProjectSummary,
-  credentials: ReturnType<typeof getTrelloCredentials>
-): Promise<TrelloLabel | null> {
-  const labels = await listTrelloBoardLabels(board.trelloBoardId, credentials);
-  const expectedName = project.labelText.trim().toLowerCase();
-  const expectedColor = project.departmentColor.trim().toLowerCase();
-
-  return (
-    labels.find(
-      (label) =>
-        label.name.trim().toLowerCase() === expectedName &&
-        String(label.color || "").trim().toLowerCase() === expectedColor
-    ) ?? null
-  );
+function isProjectLabelName(name: string): boolean {
+  return /^[^:\n]+:\s*[^:\n]+$/.test(name.trim());
 }

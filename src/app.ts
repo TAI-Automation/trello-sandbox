@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { enforcementDashboardRouter } from "./enforcementDashboard/routes.js";
 import { projectConfiguratorRouter } from "./projectConfigurator/routes.js";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -11,8 +12,16 @@ const publicDir = path.join(projectRoot, "public");
 export function createApp(): express.Express {
   const app = express();
 
-  app.use(express.json());
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody =
+          Buffer.from(buf);
+      },
+    })
+  );
   app.use(express.static(publicDir));
+  app.use(enforcementDashboardRouter);
   app.use(projectConfiguratorRouter);
 
   app.get("/", (_req, res) => {

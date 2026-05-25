@@ -295,6 +295,22 @@ export async function updateTrelloLabel(
   return normalizeTrelloLabel((await response.json()) as TrelloLabel);
 }
 
+export async function listTrelloBoardLabels(
+  boardId: string,
+  credentials: TrelloCredentials
+): Promise<TrelloLabel[]> {
+  const url = trelloUrl(`/1/boards/${boardId}/labels`, credentials);
+  url.searchParams.set("fields", "id,idBoard,name,color");
+
+  const labels = await fetchTrelloJson<TrelloLabel[]>(url);
+
+  if (!Array.isArray(labels)) {
+    throw new Error("Trello returned an invalid labels response.");
+  }
+
+  return labels.map(normalizeTrelloLabel);
+}
+
 function normalizeTrelloLabel(label: TrelloLabel): TrelloLabel {
   return {
     id: label.id,

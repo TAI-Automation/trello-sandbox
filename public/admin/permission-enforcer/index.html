@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Permission Enforcer</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --bg: #f7f8fa;
+        --border: #dfe1e6;
+        --danger: #ae2e24;
+        --danger-soft: #ffebe6;
+        --muted: #626f86;
+        --ok: #1f845a;
+        --soft: #f1f2f4;
+        --surface: #ffffff;
+        --text: #172b4d;
+        --brand: #0c66e4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 18px;
+        margin: 0 auto;
+        max-width: 1100px;
+        padding: 24px;
+      }
+
+      header {
+        align-items: center;
+        display: flex;
+        gap: 14px;
+        justify-content: space-between;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 16px;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        align-items: center;
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        justify-content: center;
+        min-height: 36px;
+        padding: 7px 12px;
+      }
+
+      button.secondary {
+        background: var(--soft);
+        color: var(--text);
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      input {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        min-height: 38px;
+        padding: 7px 10px;
+        width: 100%;
+      }
+
+      label {
+        color: var(--muted);
+        display: grid;
+        font-size: 12px;
+        gap: 5px;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: grid;
+        gap: 14px;
+        padding: 16px;
+      }
+
+      .login {
+        margin: 12vh auto 0;
+        max-width: 420px;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .toolbar {
+        align-items: end;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(220px, 1fr) auto;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      table {
+        border-collapse: collapse;
+        min-width: 820px;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--border);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .board-name {
+        display: grid;
+        gap: 3px;
+      }
+
+      .mono,
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .mono {
+        font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      }
+
+      .status {
+        align-items: center;
+        border-radius: 999px;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 700;
+        min-height: 24px;
+        padding: 3px 9px;
+      }
+
+      .status.on {
+        background: #dcfff1;
+        color: var(--ok);
+      }
+
+      .status.off {
+        background: var(--soft);
+        color: var(--muted);
+      }
+
+      .message {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 12px;
+      }
+
+      .message.error {
+        background: var(--danger-soft);
+        border-color: #ffbdad;
+        color: var(--danger);
+      }
+
+      .switch {
+        display: inline-flex;
+        height: 26px;
+        position: relative;
+        width: 46px;
+      }
+
+      .switch input {
+        height: 1px;
+        opacity: 0;
+        position: absolute;
+        width: 1px;
+      }
+
+      .slider {
+        background: #8590a2;
+        border-radius: 999px;
+        cursor: pointer;
+        inset: 0;
+        position: absolute;
+        transition: background 0.16s ease;
+      }
+
+      .slider::before {
+        background: #ffffff;
+        border-radius: 50%;
+        content: "";
+        height: 20px;
+        left: 3px;
+        position: absolute;
+        top: 3px;
+        transition: transform 0.16s ease;
+        width: 20px;
+      }
+
+      .switch input:checked + .slider {
+        background: var(--ok);
+      }
+
+      .switch input:checked + .slider::before {
+        transform: translateX(20px);
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      .empty {
+        color: var(--muted);
+        padding: 24px 10px;
+        text-align: center;
+      }
+
+      @media (max-width: 720px) {
+        main {
+          padding: 16px;
+        }
+
+        header,
+        .toolbar {
+          align-items: stretch;
+          grid-template-columns: 1fr;
+        }
+
+        header {
+          display: grid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel login hidden" id="loginPanel">
+        <header>
+          <div>
+            <h1>Permission Enforcer</h1>
+            <p class="meta">Admin sign-in</p>
+          </div>
+        </header>
+        <form id="loginForm" class="panel">
+          <label>
+            Username
+            <input name="username" autocomplete="username" required />
+          </label>
+          <label>
+            Password
+            <input
+              name="password"
+              autocomplete="current-password"
+              required
+              type="password"
+            />
+          </label>
+          <button type="submit">Sign in</button>
+        </form>
+      </section>
+
+      <section class="hidden" id="dashboard">
+        <header>
+          <div>
+            <h1>Permission Enforcer</h1>
+            <p class="meta" id="summary">Loading boards...</p>
+          </div>
+          <button type="button" class="secondary" id="logoutButton">
+            Sign out
+          </button>
+        </header>
+
+        <section class="panel">
+          <form class="toolbar" id="addBoardForm">
+            <label>
+              Board ID
+              <input
+                name="boardId"
+                placeholder="ZOKaFmL9"
+                required
+                pattern="[A-Za-z0-9]{8,64}"
+              />
+            </label>
+            <button type="submit">Add board</button>
+          </form>
+        </section>
+
+        <section id="message"></section>
+
+        <section class="panel">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Board</th>
+                  <th>Enforcement</th>
+                  <th>Webhook</th>
+                  <th>Last label sync</th>
+                  <th>Error</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="boards"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      var boards = [];
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function showLogin() {
+        document.getElementById("loginPanel").classList.remove("hidden");
+        document.getElementById("dashboard").classList.add("hidden");
+      }
+
+      function showDashboard() {
+        document.getElementById("loginPanel").classList.add("hidden");
+        document.getElementById("dashboard").classList.remove("hidden");
+      }
+
+      function showMessage(text, isError) {
+        document.getElementById("message").innerHTML = text
+          ? '<div class="message ' +
+            (isError ? "error" : "") +
+            '">' +
+            escapeHtml(text) +
+            "</div>"
+          : "";
+      }
+
+      function formatDate(value) {
+        if (!value) {
+          return "Never";
+        }
+
+        return new Date(value).toLocaleString();
+      }
+
+      function renderBoards() {
+        var target = document.getElementById("boards");
+        document.getElementById("summary").textContent =
+          boards.length + " managed board" + (boards.length === 1 ? "" : "s");
+
+        if (boards.length === 0) {
+          target.innerHTML =
+            '<tr><td colspan="6"><div class="empty">No boards configured.</div></td></tr>';
+          return;
+        }
+
+        target.innerHTML = boards
+          .map(function (board) {
+            return (
+              "<tr>" +
+              '<td><div class="board-name"><strong>' +
+              escapeHtml(board.boardName) +
+              '</strong><span class="mono">' +
+              escapeHtml(board.trelloBoardId) +
+              "</span></div></td>" +
+              '<td><label class="switch" title="Enforcement enabled"><input type="checkbox" data-toggle="' +
+              escapeHtml(board.trelloBoardId) +
+              '" ' +
+              (board.enforcementEnabled ? "checked" : "") +
+              ' /><span class="slider"></span></label></td>' +
+              '<td><span class="status ' +
+              (board.webhookActive ? "on" : "off") +
+              '">' +
+              (board.webhookActive ? "Active" : "Inactive") +
+              "</span></td>" +
+              "<td>" +
+              escapeHtml(formatDate(board.lastLabelSyncAt)) +
+              "</td>" +
+              "<td>" +
+              escapeHtml(board.lastError || "") +
+              "</td>" +
+              '<td><div class="actions"><button type="button" class="danger" data-remove="' +
+              escapeHtml(board.trelloBoardId) +
+              '">Remove</button></div></td>' +
+              "</tr>"
+            );
+          })
+          .join("");
+
+        target.querySelectorAll("[data-toggle]").forEach(function (input) {
+          input.addEventListener("change", function () {
+            updateEnforcement(input);
+          });
+        });
+        target.querySelectorAll("[data-remove]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            removeBoard(button);
+          });
+        });
+      }
+
+      async function apiRequest(url, options) {
+        var response = await fetch(
+          url,
+          Object.assign(
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+            options || {}
+          )
+        );
+
+        if (response.status === 401) {
+          showLogin();
+        }
+
+        if (!response.ok) {
+          var errorBody = await response.json().catch(function () {
+            return {};
+          });
+          throw new Error(errorBody.error || "Request failed.");
+        }
+
+        if (response.status === 204) {
+          return {};
+        }
+
+        return response.json();
+      }
+
+      async function loadState() {
+        var state = await apiRequest("/api/enforcement-dashboard/state");
+        boards = state.boards || [];
+        showDashboard();
+        renderBoards();
+      }
+
+      async function login(event) {
+        event.preventDefault();
+        showMessage("", false);
+
+        var form = event.currentTarget;
+        var button = form.querySelector("button");
+        var formData = new FormData(form);
+
+        try {
+          button.disabled = true;
+          await apiRequest("/api/enforcement-dashboard/login", {
+            method: "POST",
+            body: JSON.stringify({
+              username: String(formData.get("username") || ""),
+              password: String(formData.get("password") || ""),
+            }),
+          });
+          form.reset();
+          await loadState();
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function logout() {
+        await apiRequest("/api/enforcement-dashboard/logout", {
+          method: "POST",
+        }).catch(function () {});
+        showLogin();
+      }
+
+      async function addBoard(event) {
+        event.preventDefault();
+        showMessage("", false);
+
+        var form = event.currentTarget;
+        var button = form.querySelector("button");
+        var formData = new FormData(form);
+
+        try {
+          button.disabled = true;
+          var result = await apiRequest("/api/enforcement-dashboard/boards", {
+            method: "POST",
+            body: JSON.stringify({
+              boardId: String(formData.get("boardId") || "").trim(),
+            }),
+          });
+          form.reset();
+          await loadState();
+
+          if (result.labelSync && result.labelSync.failed > 0) {
+            showMessage("Board saved, but some labels failed to sync.", true);
+          } else {
+            showMessage("Board saved.", false);
+          }
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function updateEnforcement(input) {
+        showMessage("", false);
+        input.disabled = true;
+
+        try {
+          await apiRequest(
+            "/api/enforcement-dashboard/boards/" +
+              encodeURIComponent(input.getAttribute("data-toggle")) +
+              "/enforcement",
+            {
+              method: "PATCH",
+              body: JSON.stringify({ enabled: input.checked }),
+            }
+          );
+          await loadState();
+        } catch (error) {
+          input.checked = !input.checked;
+          showMessage(error.message || error, true);
+        } finally {
+          input.disabled = false;
+        }
+      }
+
+      async function removeBoard(button) {
+        var boardId = button.getAttribute("data-remove");
+        var board = boards.find(function (item) {
+          return item.trelloBoardId === boardId;
+        });
+        var label = board ? board.boardName : "this board";
+
+        if (!window.confirm("Remove " + label + "?")) {
+          return;
+        }
+
+        showMessage("", false);
+        button.disabled = true;
+
+        try {
+          await apiRequest(
+            "/api/enforcement-dashboard/boards/" + encodeURIComponent(boardId),
+            { method: "DELETE" }
+          );
+          await loadState();
+          showMessage("Board removed.", false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      document.getElementById("loginForm").addEventListener("submit", login);
+      document.getElementById("addBoardForm").addEventListener("submit", addBoard);
+      document.getElementById("logoutButton").addEventListener("click", logout);
+
+      fetch("/api/enforcement-dashboard/session")
+        .then(function (response) {
+          return response.json();
+        })
+        .then(function (session) {
+          if (session.authenticated) {
+            return loadState();
+          }
+
+          showLogin();
+        })
+        .catch(function () {
+          showLogin();
+        });
+    </script>
+  </body>
+</html>

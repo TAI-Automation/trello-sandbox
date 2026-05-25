@@ -343,6 +343,8 @@
       }
 
       .icon-button.subtle-danger {
+        border-color: var(--danger-border);
+        color: var(--danger);
         font-size: 13px;
         min-height: 24px;
         width: 24px;
@@ -494,6 +496,8 @@
                   escapeHtml(options.ownerId) +
                   '" data-manager-member-id="' +
                   escapeHtml(item.trelloMemberId) +
+                  '" data-manager-name="' +
+                  escapeHtml(label) +
                   '">&times;</button>'
                 : "";
 
@@ -1039,9 +1043,24 @@
           var managerTrelloMemberId = String(
             button.getAttribute("data-manager-member-id") || ""
           );
+          var managerName = String(
+            button.getAttribute("data-manager-name") || "this manager"
+          );
 
           if (!ownerId || !managerTrelloMemberId) {
             throw new Error("Could not identify the manager assignment.");
+          }
+
+          if (
+            !window.confirm(
+              "Revoke " +
+                managerName +
+                "'s " +
+                type +
+                " manager status?"
+            )
+          ) {
+            return;
           }
 
           await apiRequest(

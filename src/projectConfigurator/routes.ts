@@ -16,6 +16,7 @@ import {
   resolveCapabilities,
   resolveProjectConfiguratorViewer,
 } from "./permissions.js";
+import { syncAllProjectLabels } from "./labelSync.js";
 import { getProjectConfiguratorState } from "./state.js";
 
 export const projectConfiguratorRouter = express.Router();
@@ -170,8 +171,9 @@ projectConfiguratorRouter.post(
         name,
         labelText,
       });
+      const labelSync = await syncAllProjectLabels();
 
-      res.status(201).json({ project });
+      res.status(201).json({ project, labelSync });
     } catch (error) {
       next(error);
     }

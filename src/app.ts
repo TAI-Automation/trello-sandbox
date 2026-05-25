@@ -40,9 +40,10 @@ export function createApp(): express.Express {
         "status" in error &&
         typeof error.status === "number"
           ? error.status
+          : isPostgresConflict(error)
+            ? 409
           : 500;
-      const message =
-        error instanceof Error ? error.message : "Unexpected server error.";
+      const message = getErrorMessage(error);
 
       res.status(status).json({ error: message });
     }
@@ -52,3 +53,20 @@ export function createApp(): express.Express {
 }
 
 export default createApp();
+
+function isPostgresConflict(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "23505" || error.code === "23514")
+  );
+}
+
+function getErrorMessage(error: unknown): string {
+  if (isPostgresConflict(error)) {
+    return "The requested name or color conflicts with existing configuration.";
+  }
+
+  return error instanceof Error ? error.message : "Unexpected server error.";
+}

@@ -24,6 +24,13 @@ export type TrelloList = {
   name: string;
 };
 
+export type TrelloLabel = {
+  id: string;
+  idBoard: string;
+  name: string;
+  color: string;
+};
+
 export type TrelloWebhook = {
   id: string;
   description?: string;
@@ -227,6 +234,74 @@ export async function moveCardToList(
       `Trello returned ${response.status} ${response.statusText}: ${body}`
     );
   }
+}
+
+export async function createTrelloLabel(
+  input: {
+    boardId: string;
+    name: string;
+    color: string;
+  },
+  credentials: TrelloCredentials
+): Promise<TrelloLabel> {
+  const url = trelloUrl("/1/labels", credentials);
+  url.searchParams.set("idBoard", input.boardId);
+  url.searchParams.set("name", input.name);
+  url.searchParams.set("color", input.color);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    );
+  }
+
+  return normalizeTrelloLabel((await response.json()) as TrelloLabel);
+}
+
+export async function updateTrelloLabel(
+  input: {
+    labelId: string;
+    name: string;
+    color: string;
+  },
+  credentials: TrelloCredentials
+): Promise<TrelloLabel> {
+  const url = trelloUrl(`/1/labels/${input.labelId}`, credentials);
+  url.searchParams.set("name", input.name);
+  url.searchParams.set("color", input.color);
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    );
+  }
+
+  return normalizeTrelloLabel((await response.json()) as TrelloLabel);
+}
+
+function normalizeTrelloLabel(label: TrelloLabel): TrelloLabel {
+  return {
+    id: label.id,
+    idBoard: label.idBoard,
+    name: label.name,
+    color: label.color,
+  };
 }
 
 export async function listTrelloWebhooks(

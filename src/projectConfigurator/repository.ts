@@ -24,6 +24,25 @@ export type ManagerAssignmentSummary = {
   username: string | null;
 };
 
+export type MemberSummary = {
+  trelloMemberId: string;
+  displayName: string;
+  username: string | null;
+};
+
+export type ManagedBoardSummary = {
+  trelloBoardId: string;
+  boardName: string;
+};
+
+export type BoardProjectLabelSummary = {
+  trelloBoardId: string;
+  projectId: string;
+  trelloLabelId: string;
+  syncedLabelText: string;
+  syncedColor: string;
+};
+
 type DepartmentRow = {
   id: string;
   name: string;
@@ -44,6 +63,25 @@ type ManagerAssignmentRow = {
   trello_member_id: string;
   display_name: string;
   username: string | null;
+};
+
+type MemberRow = {
+  trello_member_id: string;
+  display_name: string;
+  username: string | null;
+};
+
+type ManagedBoardRow = {
+  trello_board_id: string;
+  board_name: string;
+};
+
+type BoardProjectLabelRow = {
+  trello_board_id: string;
+  project_id: string;
+  trello_label_id: string;
+  synced_label_text: string;
+  synced_color: string;
 };
 
 type IdRow = {
@@ -125,6 +163,38 @@ export async function listProjectManagerAssignments(
   `);
 
   return result.rows.map(mapManagerAssignment);
+}
+
+export async function listMembers(
+  client?: pg.PoolClient
+): Promise<MemberSummary[]> {
+  const result = await db(client).query<MemberRow>(`
+    select trello_member_id, display_name, username
+    from members
+    order by display_name asc, username asc
+  `);
+
+  return result.rows.map((row) => ({
+    trelloMemberId: row.trello_member_id,
+    displayName: row.display_name,
+    username: row.username,
+  }));
+}
+
+export async function listLabelSyncBoards(
+  client?: pg.PoolClient
+): Promise<ManagedBoardSummary[]> {
+  const result = await db(client).query<ManagedBoardRow>(`
+    select trello_board_id, board_name
+    from trello_boards
+    where label_sync_enabled = true
+    order by board_name asc
+  `);
+
+  return result.rows.map((row) => ({
+    trelloBoardId: row.trello_board_id,
+    boardName: row.board_name,
+  }));
 }
 
 export async function listManagedDepartmentIds(
@@ -318,6 +388,107 @@ export async function addProjectManager(input: {
   );
 }
 
+export async function getBoardProjectLabel(input: {
+  trelloBoardId: string;
+  projectId: string;
+}): Promise<BoardProjectLabelSummary | null> {
+  const result = await getDbPool().query<BoardProjectLabelRow>(
+    `
+      select
+        trello_board_id,
+        project_id::text,
+        trello_label_id,
+        synced_label_text,
+        synced_color
+      from board_project_labels
+      where trello_board_id = $1
+        and project_id = $2
+    `,
+    [input.trelloBoardId, input.projectId]
+  );
+
+  const row = result.rows[0];
+
+  return row ? mapBoardProjectLabel(row) : null;
+}
+
+export async function markBoardProjectLabelSynced(input: {
+  trelloBoardId: string;
+  projectId: string;
+  trelloLabelId: string;
+  syncedLabelText: string;
+  syncedColor: string;
+}): Promise<void> {
+  await getDbPool().query(
+    `
+      insert into board_project_labels (
+        trello_board_id,
+        project_id,
+        trello_label_id,
+        synced_label_text,
+        synced_color,
+        sync_status,
+        last_synced_at,
+        last_error,
+        updated_at
+      )
+      values ($1, $2, $3, $4, $5, 'synced', now(), null, now())
+      on conflict (trello_board_id, project_id) do update
+      set trello_label_id = excluded.trello_label_id,
+          synced_label_text = excluded.synced_label_text,
+          synced_color = excluded.synced_color,
+          sync_status = 'synced',
+          last_synced_at = now(),
+          last_error = null,
+          updated_at = now()
+    `,
+    [
+      input.trelloBoardId,
+      input.projectId,
+      input.trelloLabelId,
+      input.syncedLabelText,
+      input.syncedColor,
+    ]
+  );
+}
+
+export async function markBoardProjectLabelError(input: {
+  trelloBoardId: string;
+  projectId: string;
+  syncedLabelText: string;
+  syncedColor: string;
+  error: string;
+}): Promise<void> {
+  await getDbPool().query(
+    `
+      insert into board_project_labels (
+        trello_board_id,
+        project_id,
+        trello_label_id,
+        synced_label_text,
+        synced_color,
+        sync_status,
+        last_error,
+        updated_at
+      )
+      values ($1, $2, 'sync-error-' || $2::text, $3, $4, 'error', $5, now())
+      on conflict (trello_board_id, project_id) do update
+      set synced_label_text = excluded.synced_label_text,
+          synced_color = excluded.synced_color,
+          sync_status = 'error',
+          last_error = excluded.last_error,
+          updated_at = now()
+    `,
+    [
+      input.trelloBoardId,
+      input.projectId,
+      input.syncedLabelText,
+      input.syncedColor,
+      input.error,
+    ]
+  );
+}
+
 function mapManagerAssignment(
   row: ManagerAssignmentRow
 ): ManagerAssignmentSummary {
@@ -345,6 +516,18 @@ function mapProject(row: ProjectRow): ProjectSummary {
     name: row.name,
     labelText: row.label_text,
     departmentColor: row.department_color,
+  };
+}
+
+function mapBoardProjectLabel(
+  row: BoardProjectLabelRow
+): BoardProjectLabelSummary {
+  return {
+    trelloBoardId: row.trello_board_id,
+    projectId: row.project_id,
+    trelloLabelId: row.trello_label_id,
+    syncedLabelText: row.synced_label_text,
+    syncedColor: row.synced_color,
   };
 }
 

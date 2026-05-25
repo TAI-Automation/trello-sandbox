@@ -14,6 +14,8 @@
         --surface: #ffffff;
         --soft: #f4f5f7;
         --brand: #0c66e4;
+        --danger: #ae2e24;
+        --danger-border: #ffbdad;
       }
 
       * {
@@ -61,6 +63,24 @@
         font-size: 14px;
       }
 
+      label {
+        color: var(--muted);
+        display: grid;
+        font-size: 12px;
+        gap: 4px;
+      }
+
+      input,
+      select {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font: inherit;
+        min-height: 34px;
+        padding: 6px 8px;
+        width: 100%;
+      }
+
       .role {
         border: 1px solid var(--border);
         border-radius: 999px;
@@ -70,7 +90,8 @@
         white-space: nowrap;
       }
 
-      .toolbar {
+      .toolbar,
+      .form-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
@@ -100,9 +121,34 @@
         opacity: 0.5;
       }
 
-      .status {
+      .status,
+      .meta,
+      .hint {
         color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .status {
         font-size: 13px;
+      }
+
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: none;
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .panel.active {
+        display: grid;
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       }
 
       .departments {
@@ -163,23 +209,17 @@
         padding-top: 0;
       }
 
-      .meta {
-        color: var(--muted);
-        font-size: 12px;
-        line-height: 1.4;
-      }
-
       .empty,
-      .error {
+      .message {
         border: 1px solid var(--border);
         border-radius: 8px;
         color: var(--muted);
         padding: 14px;
       }
 
-      .error {
-        border-color: #ffbdad;
-        color: #ae2e24;
+      .message.error {
+        border-color: var(--danger-border);
+        color: var(--danger);
       }
     </style>
   </head>
@@ -193,10 +233,15 @@
         <span class="role" id="role">Loading</span>
       </header>
       <section class="toolbar" id="toolbar"></section>
+      <section class="panel" id="actionPanel"></section>
+      <section id="message"></section>
       <section class="departments" id="departments"></section>
     </main>
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
     <script>
+      var currentMemberId = "";
+      var currentState = null;
+      var activeAction = "";
       var colorHex = {
         green: "#4bce97",
         yellow: "#f5cd47",
@@ -229,7 +274,6 @@
         pink_dark: "#ae4787",
         black_dark: "#626f86",
       };
-
       var roleLabels = {
         admin: "Workspace admin",
         department_manager: "Department manager",
@@ -244,6 +288,10 @@
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;")
           .replace(/'/g, "&#039;");
+      }
+
+      function normalizeName(value) {
+        return String(value).trim().toLowerCase();
       }
 
       function groupByOwner(items) {
@@ -270,30 +318,445 @@
           .join(", ");
       }
 
+      function memberOptions() {
+        return currentState.members
+          .map(function (member) {
+            var label = member.username
+              ? member.displayName + " (" + member.username + ")"
+              : member.displayName;
+            return (
+              '<option value="' +
+              escapeHtml(member.trelloMemberId) +
+              '">' +
+              escapeHtml(label) +
+              "</option>"
+            );
+          })
+          .join("");
+      }
+
+      function departmentOptions(departments) {
+        return departments
+          .map(function (department) {
+            return (
+              '<option value="' +
+              escapeHtml(department.id) +
+              '">' +
+              escapeHtml(department.name) +
+              "</option>"
+            );
+          })
+          .join("");
+      }
+
+      function projectOptions(projects) {
+        return projects
+          .map(function (project) {
+            var department = currentState.departments.find(function (item) {
+              return item.id === project.departmentId;
+            });
+            var label = department
+              ? department.name + " / " + project.name
+              : project.name;
+            return (
+              '<option value="' +
+              escapeHtml(project.id) +
+              '">' +
+              escapeHtml(label) +
+              "</option>"
+            );
+          })
+          .join("");
+      }
+
+      function manageableDepartmentIds(capabilityIds) {
+        if (capabilityIds.indexOf("*") !== -1) {
+          return currentState.departments.map(function (department) {
+            return department.id;
+          });
+        }
+
+        return capabilityIds;
+      }
+
+      function getManageableDepartments(capabilityIds) {
+        var ids = manageableDepartmentIds(capabilityIds);
+        return currentState.departments.filter(function (department) {
+          return ids.indexOf(department.id) !== -1;
+        });
+      }
+
+      function getManageableProjects() {
+        var ids = manageableDepartmentIds(
+          currentState.capabilities.canAssignProjectManagersInDepartmentIds
+        );
+        return currentState.projects.filter(function (project) {
+          return ids.indexOf(project.departmentId) !== -1;
+        });
+      }
+
+      function showMessage(text, isError) {
+        var target = document.getElementById("message");
+        target.innerHTML = text
+          ? '<div class="message ' +
+            (isError ? "error" : "") +
+            '">' +
+            escapeHtml(text) +
+            "</div>"
+          : "";
+      }
+
       function renderToolbar(state) {
         var toolbar = document.getElementById("toolbar");
         var buttons = [];
 
         if (state.capabilities.canCreateDepartments) {
           buttons.push(
-            '<button type="button" disabled>Create department</button>'
+            '<button type="button" data-action="createDepartment">Create department</button>'
           );
         }
 
         if (state.capabilities.canAssignDepartmentManagers) {
           buttons.push(
-            '<button type="button" class="secondary" disabled>Assign department manager</button>'
+            '<button type="button" class="secondary" data-action="assignDepartmentManager">Assign department manager</button>'
           );
         }
 
         if (state.capabilities.canCreateProjectsInDepartmentIds.length > 0) {
-          buttons.push('<button type="button" disabled>Create project</button>');
+          buttons.push(
+            '<button type="button" data-action="createProject">Create project</button>'
+          );
+        }
+
+        if (
+          state.capabilities.canAssignProjectManagersInDepartmentIds.length > 0
+        ) {
+          buttons.push(
+            '<button type="button" class="secondary" data-action="assignProjectManager">Assign project manager</button>'
+          );
         }
 
         toolbar.innerHTML = buttons.join("");
+        toolbar.querySelectorAll("button[data-action]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            openAction(button.getAttribute("data-action"));
+          });
+        });
+      }
+
+      function openAction(action) {
+        activeAction = activeAction === action ? "" : action;
+        renderActionPanel();
+      }
+
+      function renderActionPanel() {
+        var panel = document.getElementById("actionPanel");
+
+        if (!activeAction || !currentState) {
+          panel.className = "panel";
+          panel.innerHTML = "";
+          return;
+        }
+
+        panel.className = "panel active";
+
+        if (activeAction === "createDepartment") {
+          panel.innerHTML = renderCreateDepartmentForm();
+        } else if (activeAction === "assignDepartmentManager") {
+          panel.innerHTML = renderAssignDepartmentManagerForm();
+        } else if (activeAction === "createProject") {
+          panel.innerHTML = renderCreateProjectForm();
+        } else if (activeAction === "assignProjectManager") {
+          panel.innerHTML = renderAssignProjectManagerForm();
+        }
+
+        var form = panel.querySelector("form");
+        if (form) {
+          form.addEventListener("submit", submitActiveAction);
+        }
+        var cancel = panel.querySelector("[data-cancel]");
+        if (cancel) {
+          cancel.addEventListener("click", function () {
+            activeAction = "";
+            renderActionPanel();
+          });
+        }
+      }
+
+      function renderCreateDepartmentForm() {
+        var options = currentState.colors.available
+          .map(function (color) {
+            return (
+              '<option value="' +
+              escapeHtml(color) +
+              '">' +
+              escapeHtml(color) +
+              "</option>"
+            );
+          })
+          .join("");
+        var disabled = currentState.colors.available.length === 0 ? "disabled" : "";
+        var hint =
+          currentState.colors.available.length === 0
+            ? "All Trello colors are already claimed by active departments."
+            : "Choose one of the unclaimed Trello colors.";
+
+        return (
+          "<form>" +
+          "<h2>Create department</h2>" +
+          '<div class="form-grid">' +
+          '<label>Name<input name="name" required maxlength="120" /></label>' +
+          '<label>Color<select name="departmentColor" required ' +
+          disabled +
+          ">" +
+          options +
+          "</select></label>" +
+          "</div>" +
+          '<p class="hint">' +
+          escapeHtml(hint) +
+          "</p>" +
+          '<div class="form-actions">' +
+          '<button type="submit" ' +
+          disabled +
+          ">Create</button>" +
+          '<button type="button" class="secondary" data-cancel>Cancel</button>' +
+          "</div>" +
+          "</form>"
+        );
+      }
+
+      function renderAssignDepartmentManagerForm() {
+        if (currentState.departments.length === 0 || currentState.members.length === 0) {
+          return emptyFormMessage(
+            "Assign department manager",
+            "Create a department and make sure members are synced before assigning managers."
+          );
+        }
+
+        return (
+          "<form>" +
+          "<h2>Assign department manager</h2>" +
+          '<div class="form-grid">' +
+          '<label>Department<select name="departmentId" required>' +
+          departmentOptions(currentState.departments) +
+          "</select></label>" +
+          '<label>Member<select name="managerTrelloMemberId" required>' +
+          memberOptions() +
+          "</select></label>" +
+          "</div>" +
+          '<div class="form-actions">' +
+          '<button type="submit">Assign</button>' +
+          '<button type="button" class="secondary" data-cancel>Cancel</button>' +
+          "</div>" +
+          "</form>"
+        );
+      }
+
+      function renderCreateProjectForm() {
+        var departments = getManageableDepartments(
+          currentState.capabilities.canCreateProjectsInDepartmentIds
+        );
+
+        if (departments.length === 0) {
+          return emptyFormMessage(
+            "Create project",
+            "No departments are available for project creation."
+          );
+        }
+
+        return (
+          "<form>" +
+          "<h2>Create project</h2>" +
+          '<div class="form-grid">' +
+          '<label>Department<select name="departmentId" required>' +
+          departmentOptions(departments) +
+          "</select></label>" +
+          '<label>Name<input name="name" required maxlength="160" /></label>' +
+          '<label>Label text<input name="labelText" maxlength="160" /></label>' +
+          "</div>" +
+          '<p class="hint">Label text defaults to the project name. The label color comes from the department.</p>' +
+          '<div class="form-actions">' +
+          '<button type="submit">Create</button>' +
+          '<button type="button" class="secondary" data-cancel>Cancel</button>' +
+          "</div>" +
+          "</form>"
+        );
+      }
+
+      function renderAssignProjectManagerForm() {
+        var projects = getManageableProjects();
+
+        if (projects.length === 0 || currentState.members.length === 0) {
+          return emptyFormMessage(
+            "Assign project manager",
+            "Create a project and make sure members are synced before assigning project managers."
+          );
+        }
+
+        return (
+          "<form>" +
+          "<h2>Assign project manager</h2>" +
+          '<div class="form-grid">' +
+          '<label>Project<select name="projectId" required>' +
+          projectOptions(projects) +
+          "</select></label>" +
+          '<label>Member<select name="managerTrelloMemberId" required>' +
+          memberOptions() +
+          "</select></label>" +
+          "</div>" +
+          '<div class="form-actions">' +
+          '<button type="submit">Assign</button>' +
+          '<button type="button" class="secondary" data-cancel>Cancel</button>' +
+          "</div>" +
+          "</form>"
+        );
+      }
+
+      function emptyFormMessage(title, message) {
+        return (
+          "<div>" +
+          "<h2>" +
+          escapeHtml(title) +
+          "</h2>" +
+          '<p class="hint">' +
+          escapeHtml(message) +
+          "</p>" +
+          '<div class="form-actions"><button type="button" class="secondary" data-cancel>Close</button></div>' +
+          "</div>"
+        );
+      }
+
+      async function submitActiveAction(event) {
+        event.preventDefault();
+        showMessage("", false);
+
+        var form = event.currentTarget;
+        var button = form.querySelector('button[type="submit"]');
+        var formData = new FormData(form);
+
+        try {
+          if (button) {
+            button.disabled = true;
+          }
+
+          var successMessage = "Saved.";
+
+          if (activeAction === "createDepartment") {
+            await submitCreateDepartment(formData);
+          } else if (activeAction === "assignDepartmentManager") {
+            await apiRequest(
+              "/api/project-configurator/departments/" +
+                encodeURIComponent(formData.get("departmentId")) +
+                "/managers",
+              {
+                managerTrelloMemberId: String(
+                  formData.get("managerTrelloMemberId")
+                ),
+              }
+            );
+          } else if (activeAction === "createProject") {
+            successMessage = await submitCreateProject(formData);
+          } else if (activeAction === "assignProjectManager") {
+            await apiRequest(
+              "/api/project-configurator/projects/" +
+                encodeURIComponent(formData.get("projectId")) +
+                "/managers",
+              {
+                managerTrelloMemberId: String(
+                  formData.get("managerTrelloMemberId")
+                ),
+              }
+            );
+          }
+
+          activeAction = "";
+          await loadState();
+          showMessage(successMessage, false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          if (button) {
+            button.disabled = false;
+          }
+        }
+      }
+
+      async function submitCreateDepartment(formData) {
+        var name = String(formData.get("name") || "").trim();
+        var departmentColor = String(formData.get("departmentColor") || "");
+
+        if (
+          currentState.departments.some(function (department) {
+            return normalizeName(department.name) === normalizeName(name);
+          })
+        ) {
+          throw new Error("A department with that name already exists.");
+        }
+
+        if (currentState.colors.available.indexOf(departmentColor) === -1) {
+          throw new Error("That department color is already claimed.");
+        }
+
+        await apiRequest("/api/project-configurator/departments", {
+          name: name,
+          departmentColor: departmentColor,
+        });
+      }
+
+      async function submitCreateProject(formData) {
+        var departmentId = String(formData.get("departmentId") || "");
+        var name = String(formData.get("name") || "").trim();
+        var labelText = String(formData.get("labelText") || "").trim();
+
+        if (
+          currentState.projects.some(function (project) {
+            return (
+              project.departmentId === departmentId &&
+              normalizeName(project.name) === normalizeName(name)
+            );
+          })
+        ) {
+          throw new Error("A project with that name already exists in this department.");
+        }
+
+        var result = await apiRequest("/api/project-configurator/projects", {
+          departmentId: departmentId,
+          name: name,
+          labelText: labelText || name,
+        });
+
+        if (result.labelSync && result.labelSync.failed > 0) {
+          return "Project created, but some Trello labels failed to sync.";
+        }
+
+        return "Project created and labels synced.";
+      }
+
+      async function apiRequest(url, body) {
+        var response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            Object.assign({ trelloMemberId: currentMemberId }, body)
+          ),
+        });
+
+        if (!response.ok) {
+          var errorBody = await response.json().catch(function () {
+            return {};
+          });
+          throw new Error(errorBody.error || "Request failed.");
+        }
+
+        if (response.status === 204) {
+          return {};
+        }
+
+        return response.json();
       }
 
       function renderState(state) {
+        currentState = state;
         var departments = document.getElementById("departments");
         var role = document.getElementById("role");
         var status = document.getElementById("status");
@@ -317,6 +780,7 @@
           state.departments.length +
           " departments";
         renderToolbar(state);
+        renderActionPanel();
 
         if (state.departments.length === 0) {
           departments.innerHTML =
@@ -384,21 +848,27 @@
         document.getElementById("status").textContent =
           "Could not load configuration.";
         document.getElementById("departments").innerHTML =
-          '<div class="error">' + escapeHtml(error.message || error) + "</div>";
+          '<div class="message error">' +
+          escapeHtml(error.message || error) +
+          "</div>";
       }
 
       async function loadState() {
-        var t = window.TrelloPowerUp.iframe();
-        var member = await t.member("id");
+        if (!currentMemberId) {
+          var t = window.TrelloPowerUp.iframe();
+          var member = await t.member("id");
 
-        if (!member || !member.id) {
-          throw new Error("Could not determine the current Trello member.");
+          if (!member || !member.id) {
+            throw new Error("Could not determine the current Trello member.");
+          }
+
+          currentMemberId = member.id;
         }
 
         var response = await fetch("/api/project-configurator/state", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ trelloMemberId: member.id }),
+          body: JSON.stringify({ trelloMemberId: currentMemberId }),
         });
 
         if (!response.ok) {

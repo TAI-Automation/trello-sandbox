@@ -3,6 +3,7 @@ import {
   listActiveDepartments,
   listActiveProjects,
   listDepartmentManagerAssignments,
+  listMembers,
   listProjectManagerAssignments,
 } from "./repository.js";
 import {
@@ -21,6 +22,7 @@ export type ProjectConfiguratorState = {
     ReturnType<typeof listDepartmentManagerAssignments>
   >;
   projectManagers: Awaited<ReturnType<typeof listProjectManagerAssignments>>;
+  members: Awaited<ReturnType<typeof listMembers>>;
   colors: {
     all: string[];
     used: string[];
@@ -39,6 +41,7 @@ export async function getProjectConfiguratorState(
     projects,
     departmentManagers,
     projectManagers,
+    members,
   ] = await Promise.all([
     listActiveDepartments(),
     listActiveProjects(),
@@ -46,6 +49,7 @@ export async function getProjectConfiguratorState(
       ? listDepartmentManagerAssignments()
       : Promise.resolve([]),
     listProjectManagerAssignments(),
+    listMembers(),
   ]);
 
   const used = departments.map((department) => department.departmentColor);
@@ -58,6 +62,7 @@ export async function getProjectConfiguratorState(
     projects,
     departmentManagers,
     projectManagers,
+    members,
     colors: {
       all: [...trelloLabelColors],
       used,

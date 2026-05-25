@@ -24,6 +24,7 @@ export type ProjectConfiguratorCapabilities = {
   canAssignDepartmentManagers: boolean;
   canCreateProjectsInDepartmentIds: string[];
   canAssignProjectManagersInDepartmentIds: string[];
+  canDeleteProjectsInDepartmentIds: string[];
 };
 
 export function getOrganizationId(): string {
@@ -89,7 +90,18 @@ export function resolveCapabilities(
     canAssignDepartmentManagers: isAdmin,
     canCreateProjectsInDepartmentIds: canManageDepartments,
     canAssignProjectManagersInDepartmentIds: canManageDepartments,
+    canDeleteProjectsInDepartmentIds: canManageDepartments,
   };
+}
+
+export function canDeleteProjectsInDepartment(
+  capabilities: ProjectConfiguratorCapabilities,
+  departmentId: string
+): boolean {
+  return canUseDepartmentCapability(
+    capabilities.canDeleteProjectsInDepartmentIds,
+    departmentId
+  );
 }
 
 export function canManageDepartment(

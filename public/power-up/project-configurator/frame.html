@@ -116,6 +116,10 @@
         color: var(--text);
       }
 
+      button.danger {
+        background: var(--danger);
+      }
+
       button:disabled {
         cursor: not-allowed;
         opacity: 0.5;
@@ -185,6 +189,86 @@
         width: 16px;
       }
 
+      .color-picker {
+        display: grid;
+        gap: 8px;
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+      }
+
+      .color-option {
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+        display: grid;
+        gap: 6px;
+        min-height: 58px;
+        padding: 8px;
+        position: relative;
+      }
+
+      .color-option input {
+        height: 1px;
+        min-height: 1px;
+        opacity: 0;
+        position: absolute;
+        width: 1px;
+      }
+
+      .color-option input:checked + .color-swatch {
+        box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand);
+      }
+
+      .color-option.claimed {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
+
+      .color-swatch {
+        border-radius: 4px;
+        height: 22px;
+        overflow: hidden;
+        position: relative;
+        width: 100%;
+      }
+
+      .color-option.claimed .color-swatch::after {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(23, 43, 77, 0.45),
+          rgba(23, 43, 77, 0.45) 2px,
+          transparent 2px,
+          transparent 6px
+        );
+        content: "";
+        inset: 0;
+        position: absolute;
+      }
+
+      .color-label {
+        align-items: center;
+        display: flex;
+        font-size: 12px;
+        justify-content: space-between;
+        min-width: 0;
+      }
+
+      .color-label span:first-child {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .claimed-badge {
+        background: var(--soft);
+        border-radius: 999px;
+        color: var(--muted);
+        flex: 0 0 auto;
+        font-size: 11px;
+        padding: 1px 6px;
+      }
+
       .name {
         overflow-wrap: anywhere;
       }
@@ -240,6 +324,7 @@
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
     <script>
       var currentMemberId = "";
+      var currentBoardId = "";
       var currentState = null;
       var activeAction = "";
       var colorHex = {
@@ -292,6 +377,15 @@
 
       function normalizeName(value) {
         return String(value).trim().toLowerCase();
+      }
+
+      function colorDisplayName(color) {
+        return String(color)
+          .split("_")
+          .map(function (part) {
+            return part.charAt(0).toUpperCase() + part.slice(1);
+          })
+          .join(" ");
       }
 
       function groupByOwner(items) {
@@ -395,6 +489,15 @@
         });
       }
 
+      function getDeletableProjects() {
+        var ids = manageableDepartmentIds(
+          currentState.capabilities.canDeleteProjectsInDepartmentIds || []
+        );
+        return currentState.projects.filter(function (project) {
+          return ids.indexOf(project.departmentId) !== -1;
+        });
+      }
+
       function showMessage(text, isError) {
         var target = document.getElementById("message");
         target.innerHTML = text
@@ -420,6 +523,9 @@
           buttons.push(
             '<button type="button" class="secondary" data-action="assignDepartmentManager">Assign department manager</button>'
           );
+          buttons.push(
+            '<button type="button" class="secondary" data-command="syncMembers">Sync members</button>'
+          );
         }
 
         if (state.capabilities.canCreateProjectsInDepartmentIds.length > 0) {
@@ -436,10 +542,26 @@
           );
         }
 
+        if (
+          state.capabilities.canDeleteProjectsInDepartmentIds &&
+          state.capabilities.canDeleteProjectsInDepartmentIds.length > 0
+        ) {
+          buttons.push(
+            '<button type="button" class="danger" data-action="deleteProject">Delete project</button>'
+          );
+        }
+
         toolbar.innerHTML = buttons.join("");
         toolbar.querySelectorAll("button[data-action]").forEach(function (button) {
           button.addEventListener("click", function () {
             openAction(button.getAttribute("data-action"));
+          });
+        });
+        toolbar.querySelectorAll("button[data-command]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            if (button.getAttribute("data-command") === "syncMembers") {
+              synchronizeMembers(button);
+            }
           });
         });
       }
@@ -468,6 +590,8 @@
           panel.innerHTML = renderCreateProjectForm();
         } else if (activeAction === "assignProjectManager") {
           panel.innerHTML = renderAssignProjectManagerForm();
+        } else if (activeAction === "deleteProject") {
+          panel.innerHTML = renderDeleteProjectForm();
         }
 
         var form = panel.querySelector("form");
@@ -484,33 +608,18 @@
       }
 
       function renderCreateDepartmentForm() {
-        var options = currentState.colors.available
-          .map(function (color) {
-            return (
-              '<option value="' +
-              escapeHtml(color) +
-              '">' +
-              escapeHtml(color) +
-              "</option>"
-            );
-          })
-          .join("");
         var disabled = currentState.colors.available.length === 0 ? "disabled" : "";
         var hint =
           currentState.colors.available.length === 0
             ? "All Trello colors are already claimed by active departments."
-            : "Choose one of the unclaimed Trello colors.";
+            : "Choose an unclaimed Trello label color.";
 
         return (
           "<form>" +
           "<h2>Create department</h2>" +
           '<div class="form-grid">' +
           '<label>Name<input name="name" required maxlength="120" /></label>' +
-          '<label>Color<select name="departmentColor" required ' +
-          disabled +
-          ">" +
-          options +
-          "</select></label>" +
+          renderColorPicker("departmentColor") +
           "</div>" +
           '<p class="hint">' +
           escapeHtml(hint) +
@@ -522,6 +631,50 @@
           '<button type="button" class="secondary" data-cancel>Cancel</button>' +
           "</div>" +
           "</form>"
+        );
+      }
+
+      function renderColorPicker(name) {
+        var selectedColor = currentState.colors.available[0] || "";
+        var used = currentState.colors.used;
+
+        return (
+          '<div class="color-picker" role="radiogroup" aria-label="Department color">' +
+          currentState.colors.all
+            .map(function (color) {
+              var claimed = used.indexOf(color) !== -1;
+              var checked = color === selectedColor ? "checked" : "";
+              var disabled = claimed ? "disabled" : "";
+              var label = colorDisplayName(color);
+
+              return (
+                '<label class="color-option ' +
+                (claimed ? "claimed" : "") +
+                '" title="' +
+                escapeHtml(claimed ? label + " is already claimed" : label) +
+                '">' +
+                '<input type="radio" name="' +
+                escapeHtml(name) +
+                '" value="' +
+                escapeHtml(color) +
+                '" required ' +
+                checked +
+                " " +
+                disabled +
+                " />" +
+                '<span class="color-swatch" style="background:' +
+                (colorHex[color] || "#dfe1e6") +
+                '"></span>' +
+                '<span class="color-label"><span>' +
+                escapeHtml(label) +
+                "</span>" +
+                (claimed ? '<span class="claimed-badge">Claimed</span>' : "") +
+                "</span>" +
+                "</label>"
+              );
+            })
+            .join("") +
+          "</div>"
         );
       }
 
@@ -572,9 +725,8 @@
           departmentOptions(departments) +
           "</select></label>" +
           '<label>Name<input name="name" required maxlength="160" /></label>' +
-          '<label>Label text<input name="labelText" maxlength="160" /></label>' +
           "</div>" +
-          '<p class="hint">Label text defaults to the project name. The label color comes from the department.</p>' +
+          '<p class="hint">Trello label text is created automatically as Department: Project Name.</p>' +
           '<div class="form-actions">' +
           '<button type="submit">Create</button>' +
           '<button type="button" class="secondary" data-cancel>Cancel</button>' +
@@ -606,6 +758,33 @@
           "</div>" +
           '<div class="form-actions">' +
           '<button type="submit">Assign</button>' +
+          '<button type="button" class="secondary" data-cancel>Cancel</button>' +
+          "</div>" +
+          "</form>"
+        );
+      }
+
+      function renderDeleteProjectForm() {
+        var projects = getDeletableProjects();
+
+        if (projects.length === 0) {
+          return emptyFormMessage(
+            "Delete project",
+            "No projects are available for deletion."
+          );
+        }
+
+        return (
+          "<form>" +
+          "<h2>Delete project</h2>" +
+          '<div class="form-grid">' +
+          '<label>Project<select name="projectId" required>' +
+          projectOptions(projects) +
+          "</select></label>" +
+          "</div>" +
+          '<p class="hint">This permanently removes the project, manager assignments, and synced label records.</p>' +
+          '<div class="form-actions">' +
+          '<button type="submit" class="danger">Delete</button>' +
           '<button type="button" class="secondary" data-cancel>Cancel</button>' +
           "</div>" +
           "</form>"
@@ -667,6 +846,11 @@
                 ),
               }
             );
+          } else if (activeAction === "deleteProject") {
+            successMessage = await submitDeleteProject(formData);
+            if (!successMessage) {
+              return;
+            }
           }
 
           activeAction = "";
@@ -706,7 +890,6 @@
       async function submitCreateProject(formData) {
         var departmentId = String(formData.get("departmentId") || "");
         var name = String(formData.get("name") || "").trim();
-        var labelText = String(formData.get("labelText") || "").trim();
 
         if (
           currentState.projects.some(function (project) {
@@ -722,7 +905,6 @@
         var result = await apiRequest("/api/project-configurator/projects", {
           departmentId: departmentId,
           name: name,
-          labelText: labelText || name,
         });
 
         if (result.labelSync && result.labelSync.failed > 0) {
@@ -732,9 +914,66 @@
         return "Project created and labels synced.";
       }
 
-      async function apiRequest(url, body) {
+      async function submitDeleteProject(formData) {
+        var projectId = String(formData.get("projectId") || "");
+        var project = currentState.projects.find(function (item) {
+          return item.id === projectId;
+        });
+        var label = project ? project.name : "this project";
+
+        if (
+          !window.confirm(
+            "Permanently delete " +
+              label +
+              "? This cannot be undone."
+          )
+        ) {
+          return "";
+        }
+
+        await apiRequest(
+          "/api/project-configurator/projects/" +
+            encodeURIComponent(projectId),
+          {},
+          "DELETE"
+        );
+
+        return "Project deleted.";
+      }
+
+      async function synchronizeMembers(button) {
+        showMessage("", false);
+
+        try {
+          button.disabled = true;
+
+          if (!currentBoardId) {
+            throw new Error("Could not determine the current Trello board.");
+          }
+
+          var result = await apiRequest("/api/project-configurator/members/sync", {
+            trelloBoardId: currentBoardId,
+          });
+
+          await loadState();
+          showMessage(
+            "Member sync complete. Added " +
+              result.added +
+              " of " +
+              result.total +
+              " board members.",
+            false
+          );
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function apiRequest(url, body, method) {
         var response = await fetch(url, {
-          method: "POST",
+          method: method || "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             Object.assign({ trelloMemberId: currentMemberId }, body)
@@ -854,15 +1093,21 @@
       }
 
       async function loadState() {
-        if (!currentMemberId) {
+        if (!currentMemberId || !currentBoardId) {
           var t = window.TrelloPowerUp.iframe();
-          var member = await t.member("id");
+          var member = currentMemberId ? { id: currentMemberId } : await t.member("id");
+          var board = currentBoardId ? { id: currentBoardId } : await t.board("id");
 
           if (!member || !member.id) {
             throw new Error("Could not determine the current Trello member.");
           }
 
+          if (!board || !board.id) {
+            throw new Error("Could not determine the current Trello board.");
+          }
+
           currentMemberId = member.id;
+          currentBoardId = board.id;
         }
 
         var response = await fetch("/api/project-configurator/state", {

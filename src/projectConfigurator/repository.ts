@@ -30,6 +30,12 @@ export type MemberSummary = {
   username: string | null;
 };
 
+export type MissingMemberInput = {
+  trelloMemberId: string;
+  displayName: string;
+  username: string | null;
+};
+
 export type ManagedBoardSummary = {
   trelloBoardId: string;
   boardName: string;
@@ -54,7 +60,7 @@ type ProjectRow = {
   id: string;
   department_id: string;
   name: string;
-  label_text: string;
+  department_name: string;
   department_color: string;
 };
 
@@ -113,7 +119,7 @@ export async function listActiveProjects(
       projects.id::text,
       projects.department_id::text,
       projects.name,
-      projects.label_text,
+      departments.name as department_name,
       departments.department_color
     from projects
     inner join departments on departments.id = projects.department_id
@@ -179,6 +185,36 @@ export async function listMembers(
     displayName: row.display_name,
     username: row.username,
   }));
+}
+
+export async function addMissingMembers(
+  members: MissingMemberInput[],
+  client?: pg.PoolClient
+): Promise<number> {
+  if (members.length === 0) {
+    return 0;
+  }
+
+  const trelloMemberIds = members.map((member) => member.trelloMemberId);
+  const displayNames = members.map((member) => member.displayName);
+  const usernames = members.map((member) => member.username);
+
+  const result = await db(client).query<{ trello_member_id: string }>(
+    `
+      insert into members (trello_member_id, display_name, username, last_seen_at)
+      select trello_member_id, display_name, username, now()
+      from unnest($1::text[], $2::text[], $3::text[]) as input(
+        trello_member_id,
+        display_name,
+        username
+      )
+      on conflict (trello_member_id) do nothing
+      returning trello_member_id
+    `,
+    [trelloMemberIds, displayNames, usernames]
+  );
+
+  return result.rowCount ?? 0;
 }
 
 export async function listLabelSyncBoards(
@@ -316,12 +352,11 @@ export async function updateDepartmentColor(input: {
 export async function createProject(input: {
   departmentId: string;
   name: string;
-  labelText: string;
 }): Promise<ProjectSummary> {
   const result = await getDbPool().query<ProjectRow>(
     `
-      insert into projects (department_id, name, label_text)
-      select departments.id, $2, $3
+      insert into projects (department_id, name)
+      select departments.id, $2
       from departments
       where departments.id = $1
         and departments.archived_at is null
@@ -329,17 +364,52 @@ export async function createProject(input: {
         projects.id::text,
         projects.department_id::text,
         projects.name,
-        projects.label_text,
+        (
+          select departments.name
+          from departments
+          where departments.id = projects.department_id
+        ) as department_name,
         (
           select departments.department_color
           from departments
           where departments.id = projects.department_id
         ) as department_color
     `,
-    [input.departmentId, input.name, input.labelText]
+    [input.departmentId, input.name]
   );
 
   return mapProject(requireRow(result.rows[0], "Project was not created."));
+}
+
+export async function deleteProject(projectId: string): Promise<boolean> {
+  const client = await getDbPool().connect();
+
+  try {
+    await client.query("begin");
+    await client.query("delete from project_managers where project_id = $1", [
+      projectId,
+    ]);
+    await client.query(
+      "delete from board_project_labels where project_id = $1",
+      [projectId]
+    );
+    const result = await client.query(
+      `
+        delete from projects
+        where id = $1
+          and archived_at is null
+      `,
+      [projectId]
+    );
+    await client.query("commit");
+
+    return (result.rowCount ?? 0) > 0;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function addDepartmentManager(input: {
@@ -514,7 +584,7 @@ function mapProject(row: ProjectRow): ProjectSummary {
     id: row.id,
     departmentId: row.department_id,
     name: row.name,
-    labelText: row.label_text,
+    labelText: `${row.department_name}: ${row.name}`,
     departmentColor: row.department_color,
   };
 }

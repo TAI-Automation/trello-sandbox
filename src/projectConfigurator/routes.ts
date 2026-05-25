@@ -1,18 +1,23 @@
 import express from "express";
 
 import { isTrelloLabelColor } from "../config/projectConfigurator.js";
+import { fetchTrelloBoardMembers } from "../trello/api.js";
 import {
   addDepartmentManager,
+  addMissingMembers,
   addProjectManager,
   activeDepartmentExists,
   createDepartment,
   createProject,
+  deleteProject,
   getProjectDepartmentId,
   updateDepartmentColor,
 } from "./repository.js";
 import {
   canAssignProjectManagersInDepartment,
+  canDeleteProjectsInDepartment,
   canManageDepartment,
+  getTrelloCredentials,
   resolveCapabilities,
   resolveProjectConfiguratorViewer,
 } from "./permissions.js";
@@ -29,6 +34,42 @@ projectConfiguratorRouter.post(
       const state = await getProjectConfiguratorState(trelloMemberId);
 
       res.json(state);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.post(
+  "/api/project-configurator/members/sync",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const trelloBoardId = readRequiredString(req.body, "trelloBoardId");
+      const { capabilities } = await resolveViewerAndCapabilities(
+        trelloMemberId
+      );
+
+      if (!capabilities.canCreateDepartments) {
+        throw new ForbiddenError("Only Workspace admins can sync members.");
+      }
+
+      const boardMembers = await fetchTrelloBoardMembers(
+        trelloBoardId,
+        getTrelloCredentials()
+      );
+      const normalizedMembers = boardMembers.map((member) => ({
+        trelloMemberId: member.id,
+        displayName:
+          member.fullName?.trim() ||
+          member.username?.trim() ||
+          member.initials?.trim() ||
+          member.id,
+        username: member.username?.trim() || null,
+      }));
+      const added = await addMissingMembers(normalizedMembers);
+
+      res.json({ added, total: normalizedMembers.length });
     } catch (error) {
       next(error);
     }
@@ -151,7 +192,6 @@ projectConfiguratorRouter.post(
       const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
       const departmentId = readRequiredString(req.body, "departmentId");
       const name = readRequiredString(req.body, "name");
-      const labelText = readOptionalString(req.body, "labelText") ?? name;
       const { capabilities } = await resolveViewerAndCapabilities(
         trelloMemberId
       );
@@ -169,7 +209,6 @@ projectConfiguratorRouter.post(
       const project = await createProject({
         departmentId,
         name,
-        labelText,
       });
       const labelSync = await syncAllProjectLabels();
 
@@ -225,6 +264,42 @@ projectConfiguratorRouter.post(
   }
 );
 
+projectConfiguratorRouter.delete(
+  "/api/project-configurator/projects/:projectId",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const projectDepartmentId = await getProjectDepartmentId(
+        req.params.projectId
+      );
+
+      if (!projectDepartmentId) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const { capabilities } = await resolveViewerAndCapabilities(
+        trelloMemberId
+      );
+
+      if (!canDeleteProjectsInDepartment(capabilities, projectDepartmentId)) {
+        throw new ForbiddenError(
+          "Only Workspace admins and assigned department managers can delete projects."
+        );
+      }
+
+      const deleted = await deleteProject(req.params.projectId);
+
+      if (!deleted) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 async function resolveViewerAndCapabilities(trelloMemberId: string) {
   const viewer = await resolveProjectConfiguratorViewer(trelloMemberId);
 
@@ -258,24 +333,6 @@ class ForbiddenError extends Error {
 
 class NotFoundError extends Error {
   status = 404;
-}
-
-function readOptionalString(body: unknown, key: string): string | undefined {
-  if (!body || typeof body !== "object" || !(key in body)) {
-    return undefined;
-  }
-
-  const value = (body as Record<string, unknown>)[key];
-
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new BadRequestError(`${key} must be a non-empty string.`);
-  }
-
-  return value.trim();
 }
 
 function readOptionalInteger(body: unknown, key: string): number | undefined {

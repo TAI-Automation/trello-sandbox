@@ -37,6 +37,8 @@ export type TrelloCard = {
   idList: string;
   closed: boolean;
   idLabels: string[];
+  name?: string;
+  url?: string;
 };
 
 export type TrelloWebhook = {
@@ -297,6 +299,37 @@ export async function fetchTrelloCard(
   return normalizeTrelloCard(card);
 }
 
+export async function createTrelloCard(
+  input: {
+    listId: string;
+    name: string;
+    labelIds: string[];
+  },
+  credentials: TrelloCredentials
+): Promise<TrelloCard> {
+  const url = trelloUrl("/1/cards", credentials);
+  url.searchParams.set("idList", input.listId);
+  url.searchParams.set("name", input.name);
+  url.searchParams.set("idLabels", input.labelIds.join(","));
+  url.searchParams.set("pos", "bottom");
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    );
+  }
+
+  return normalizeTrelloCard((await response.json()) as TrelloCard);
+}
+
 export async function addLabelToCard(
   cardId: string,
   labelId: string,
@@ -435,6 +468,8 @@ function normalizeTrelloCard(card: TrelloCard): TrelloCard {
     idList: card.idList,
     closed: Boolean(card.closed),
     idLabels: Array.isArray(card.idLabels) ? card.idLabels : [],
+    name: card.name,
+    url: card.url,
   };
 }
 

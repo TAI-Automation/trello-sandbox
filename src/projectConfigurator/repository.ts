@@ -47,6 +47,7 @@ export type BoardProjectLabelSummary = {
   trelloLabelId: string;
   syncedLabelText: string;
   syncedColor: string;
+  syncStatus: "pending" | "synced" | "error";
 };
 
 type DepartmentRow = {
@@ -88,6 +89,7 @@ type BoardProjectLabelRow = {
   trello_label_id: string;
   synced_label_text: string;
   synced_color: string;
+  sync_status: "pending" | "synced" | "error";
 };
 
 type IdRow = {
@@ -497,7 +499,8 @@ export async function getBoardProjectLabel(input: {
         project_id::text,
         trello_label_id,
         synced_label_text,
-        synced_color
+        synced_color,
+        sync_status
       from board_project_labels
       where trello_board_id = $1
         and project_id = $2
@@ -521,7 +524,8 @@ export async function listBoardProjectLabels(
         project_id::text,
         trello_label_id,
         synced_label_text,
-        synced_color
+        synced_color,
+        sync_status
       from board_project_labels
       where trello_board_id = $1
       order by project_id asc
@@ -543,7 +547,8 @@ export async function getBoardProjectLabelByTrelloLabelId(input: {
         project_id::text,
         trello_label_id,
         synced_label_text,
-        synced_color
+        synced_color,
+        sync_status
       from board_project_labels
       where trello_board_id = $1
         and trello_label_id = $2
@@ -672,6 +677,7 @@ function mapBoardProjectLabel(
     trelloLabelId: row.trello_label_id,
     syncedLabelText: row.synced_label_text,
     syncedColor: row.synced_color,
+    syncStatus: row.sync_status,
   };
 }
 

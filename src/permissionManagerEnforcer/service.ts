@@ -26,7 +26,7 @@ import {
   updateTrelloList,
   type TrelloCard,
 } from "../trello/api.js";
-import { listSafeLists } from "../db/repositories/safeLists.js";
+import { listSafeLists } from "../enforcementDashboard/safeLists.js";
 import { getBotMemberId } from "./config.js";
 
 type WebhookPayload = {

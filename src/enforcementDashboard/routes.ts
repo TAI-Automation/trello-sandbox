@@ -29,7 +29,7 @@ import {
   addSafeList,
   listSafeLists,
   removeSafeList,
-} from "../db/repositories/safeLists.js";
+} from "./safeLists.js";
 import { getPermissionManagerWebhookCallbackUrl } from "../permissionManagerEnforcer/config.js";
 
 export const enforcementDashboardRouter = express.Router();

@@ -282,15 +282,47 @@
 
       .project {
         align-items: start;
-        border-top: 1px solid var(--border);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
         display: grid;
-        gap: 4px;
-        padding-top: 8px;
+        gap: 6px;
+        padding: 10px;
       }
 
-      .project:first-child {
-        border-top: 0;
-        padding-top: 0;
+      .project-header {
+        align-items: start;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .project-details {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .icon-button {
+        align-items: center;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: var(--muted);
+        display: inline-flex;
+        flex: 0 0 auto;
+        font-size: 15px;
+        justify-content: center;
+        min-height: 28px;
+        padding: 0;
+        width: 28px;
+      }
+
+      .icon-button:hover,
+      .icon-button:focus {
+        background: #ffebe6;
+        border-color: var(--danger-border);
+        color: var(--danger);
       }
 
       .empty,
@@ -489,15 +521,6 @@
         });
       }
 
-      function getDeletableProjects() {
-        var ids = manageableDepartmentIds(
-          currentState.capabilities.canDeleteProjectsInDepartmentIds || []
-        );
-        return currentState.projects.filter(function (project) {
-          return ids.indexOf(project.departmentId) !== -1;
-        });
-      }
-
       function showMessage(text, isError) {
         var target = document.getElementById("message");
         target.innerHTML = text
@@ -542,15 +565,6 @@
           );
         }
 
-        if (
-          state.capabilities.canDeleteProjectsInDepartmentIds &&
-          state.capabilities.canDeleteProjectsInDepartmentIds.length > 0
-        ) {
-          buttons.push(
-            '<button type="button" class="danger" data-action="deleteProject">Delete project</button>'
-          );
-        }
-
         toolbar.innerHTML = buttons.join("");
         toolbar.querySelectorAll("button[data-action]").forEach(function (button) {
           button.addEventListener("click", function () {
@@ -590,8 +604,6 @@
           panel.innerHTML = renderCreateProjectForm();
         } else if (activeAction === "assignProjectManager") {
           panel.innerHTML = renderAssignProjectManagerForm();
-        } else if (activeAction === "deleteProject") {
-          panel.innerHTML = renderDeleteProjectForm();
         }
 
         var form = panel.querySelector("form");
@@ -764,33 +776,6 @@
         );
       }
 
-      function renderDeleteProjectForm() {
-        var projects = getDeletableProjects();
-
-        if (projects.length === 0) {
-          return emptyFormMessage(
-            "Delete project",
-            "No projects are available for deletion."
-          );
-        }
-
-        return (
-          "<form>" +
-          "<h2>Delete project</h2>" +
-          '<div class="form-grid">' +
-          '<label>Project<select name="projectId" required>' +
-          projectOptions(projects) +
-          "</select></label>" +
-          "</div>" +
-          '<p class="hint">This permanently removes the project, manager assignments, and synced label records.</p>' +
-          '<div class="form-actions">' +
-          '<button type="submit" class="danger">Delete</button>' +
-          '<button type="button" class="secondary" data-cancel>Cancel</button>' +
-          "</div>" +
-          "</form>"
-        );
-      }
-
       function emptyFormMessage(title, message) {
         return (
           "<div>" +
@@ -846,11 +831,6 @@
                 ),
               }
             );
-          } else if (activeAction === "deleteProject") {
-            successMessage = await submitDeleteProject(formData);
-            if (!successMessage) {
-              return;
-            }
           }
 
           activeAction = "";
@@ -914,8 +894,13 @@
         return "Project created and labels synced.";
       }
 
-      async function submitDeleteProject(formData) {
-        var projectId = String(formData.get("projectId") || "");
+      function canDeleteProject(project) {
+        var ids = currentState.capabilities.canDeleteProjectsInDepartmentIds || [];
+
+        return ids.indexOf("*") !== -1 || ids.indexOf(project.departmentId) !== -1;
+      }
+
+      async function deleteProjectById(projectId) {
         var project = currentState.projects.find(function (item) {
           return item.id === projectId;
         });
@@ -939,6 +924,28 @@
         );
 
         return "Project deleted.";
+      }
+
+      async function deleteProjectFromCard(button) {
+        showMessage("", false);
+
+        try {
+          button.disabled = true;
+          var message = await deleteProjectById(
+            String(button.getAttribute("data-delete-project") || "")
+          );
+
+          if (!message) {
+            return;
+          }
+
+          await loadState();
+          showMessage(message, false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
       }
 
       async function synchronizeMembers(button) {
@@ -1041,8 +1048,18 @@
                 ? '<p class="meta">No projects configured.</p>'
                 : projects
                     .map(function (project) {
+                      var deleteButton = canDeleteProject(project)
+                        ? '<button type="button" class="icon-button" title="Delete project" aria-label="Delete ' +
+                          escapeHtml(project.name) +
+                          '" data-delete-project="' +
+                          escapeHtml(project.id) +
+                          '">&#128465;</button>'
+                        : "";
+
                       return (
                         '<article class="project">' +
+                        '<div class="project-header">' +
+                        '<div class="project-details">' +
                         "<h3>" +
                         escapeHtml(project.name) +
                         "</h3>" +
@@ -1052,6 +1069,9 @@
                         '<p class="meta">Project managers: ' +
                         escapeHtml(managerNames(projectManagers[project.id] || [])) +
                         "</p>" +
+                        "</div>" +
+                        deleteButton +
+                        "</div>" +
                         "</article>"
                       );
                     })
@@ -1068,9 +1088,6 @@
               escapeHtml(department.name) +
               "</h2>" +
               "</div>" +
-              '<p class="meta">' +
-              escapeHtml(department.departmentColor) +
-              "</p>" +
               "</div>" +
               managerHtml +
               '<div class="project-list">' +
@@ -1080,6 +1097,14 @@
             );
           })
           .join("");
+
+        departments
+          .querySelectorAll("button[data-delete-project]")
+          .forEach(function (button) {
+            button.addEventListener("click", function () {
+              deleteProjectFromCard(button);
+            });
+          });
       }
 
       function showError(error) {

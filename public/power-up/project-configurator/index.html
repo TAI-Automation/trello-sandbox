@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Configurator Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      window.TrelloPowerUp.initialize({
+        "board-buttons": function () {
+          return [
+            {
+              text: "Project Configurator",
+              callback: function (t) {
+                return t.modal({
+                  title: "Project Configurator",
+                  url: "/power-up/project-configurator/frame.html",
+                  height: 760,
+                  fullscreen: false,
+                });
+              },
+            },
+          ];
+        },
+      });
+    </script>
+  </body>
+</html>

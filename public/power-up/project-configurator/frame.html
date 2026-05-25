@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Configurator</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --border: #dfe1e6;
+        --muted: #6b778c;
+        --text: #172b4d;
+        --surface: #ffffff;
+        --soft: #f4f5f7;
+        --brand: #0c66e4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--text);
+      }
+
+      main {
+        display: grid;
+        gap: 16px;
+        padding: 18px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 12px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      h2 {
+        font-size: 15px;
+      }
+
+      h3 {
+        font-size: 14px;
+      }
+
+      .role {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 4px 10px;
+        white-space: nowrap;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button {
+        align-items: center;
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        font-size: 13px;
+        min-height: 32px;
+        padding: 6px 10px;
+      }
+
+      button.secondary {
+        background: var(--soft);
+        color: var(--text);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .departments {
+        display: grid;
+        gap: 10px;
+      }
+
+      .department {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .department-header {
+        align-items: center;
+        background: var(--soft);
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+        padding: 10px 12px;
+      }
+
+      .department-title {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .swatch {
+        border-radius: 4px;
+        flex: 0 0 auto;
+        height: 16px;
+        width: 16px;
+      }
+
+      .name {
+        overflow-wrap: anywhere;
+      }
+
+      .manager-list,
+      .project-list {
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px;
+      }
+
+      .project {
+        align-items: start;
+        border-top: 1px solid var(--border);
+        display: grid;
+        gap: 4px;
+        padding-top: 8px;
+      }
+
+      .project:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+
+      .empty,
+      .error {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        padding: 14px;
+      }
+
+      .error {
+        border-color: #ffbdad;
+        color: #ae2e24;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Project Configurator</h1>
+          <p class="status" id="status">Loading project configuration...</p>
+        </div>
+        <span class="role" id="role">Loading</span>
+      </header>
+      <section class="toolbar" id="toolbar"></section>
+      <section class="departments" id="departments"></section>
+    </main>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var colorHex = {
+        green: "#4bce97",
+        yellow: "#f5cd47",
+        orange: "#fea362",
+        red: "#f87168",
+        purple: "#9f8fef",
+        blue: "#579dff",
+        sky: "#6cc3e0",
+        lime: "#94c748",
+        pink: "#e774bb",
+        black: "#8590a2",
+        green_light: "#baf3db",
+        yellow_light: "#f8e6a0",
+        orange_light: "#fedec8",
+        red_light: "#ffd5d2",
+        purple_light: "#dfd8fd",
+        blue_light: "#cce0ff",
+        sky_light: "#c6edfb",
+        lime_light: "#d3f1a7",
+        pink_light: "#fdd0ec",
+        black_light: "#dcdfe4",
+        green_dark: "#1f845a",
+        yellow_dark: "#946f00",
+        orange_dark: "#c25100",
+        red_dark: "#c9372c",
+        purple_dark: "#6e5dc6",
+        blue_dark: "#0c66e4",
+        sky_dark: "#227d9b",
+        lime_dark: "#5b7f24",
+        pink_dark: "#ae4787",
+        black_dark: "#626f86",
+      };
+
+      var roleLabels = {
+        admin: "Workspace admin",
+        department_manager: "Department manager",
+        project_manager: "Project manager",
+        normal_user: "Normal user",
+      };
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function groupByOwner(items) {
+        return items.reduce(function (groups, item) {
+          if (!groups[item.ownerId]) {
+            groups[item.ownerId] = [];
+          }
+          groups[item.ownerId].push(item);
+          return groups;
+        }, {});
+      }
+
+      function managerNames(items) {
+        if (!items || items.length === 0) {
+          return "No managers assigned";
+        }
+
+        return items
+          .map(function (item) {
+            return item.username
+              ? item.displayName + " (" + item.username + ")"
+              : item.displayName;
+          })
+          .join(", ");
+      }
+
+      function renderToolbar(state) {
+        var toolbar = document.getElementById("toolbar");
+        var buttons = [];
+
+        if (state.capabilities.canCreateDepartments) {
+          buttons.push(
+            '<button type="button" disabled>Create department</button>'
+          );
+        }
+
+        if (state.capabilities.canAssignDepartmentManagers) {
+          buttons.push(
+            '<button type="button" class="secondary" disabled>Assign department manager</button>'
+          );
+        }
+
+        if (state.capabilities.canCreateProjectsInDepartmentIds.length > 0) {
+          buttons.push('<button type="button" disabled>Create project</button>');
+        }
+
+        toolbar.innerHTML = buttons.join("");
+      }
+
+      function renderState(state) {
+        var departments = document.getElementById("departments");
+        var role = document.getElementById("role");
+        var status = document.getElementById("status");
+        var projectsByDepartment = state.projects.reduce(function (
+          groups,
+          project
+        ) {
+          if (!groups[project.departmentId]) {
+            groups[project.departmentId] = [];
+          }
+          groups[project.departmentId].push(project);
+          return groups;
+        }, {});
+        var departmentManagers = groupByOwner(state.departmentManagers);
+        var projectManagers = groupByOwner(state.projectManagers);
+
+        role.textContent = roleLabels[state.viewer.role] || state.viewer.role;
+        status.textContent =
+          state.projects.length +
+          " projects across " +
+          state.departments.length +
+          " departments";
+        renderToolbar(state);
+
+        if (state.departments.length === 0) {
+          departments.innerHTML =
+            '<div class="empty">No departments have been configured yet.</div>';
+          return;
+        }
+
+        departments.innerHTML = state.departments
+          .map(function (department) {
+            var projects = projectsByDepartment[department.id] || [];
+            var managers = departmentManagers[department.id] || [];
+            var managerHtml = state.capabilities.canViewDepartmentManagers
+              ? '<div class="manager-list"><p class="meta">Department managers: ' +
+                escapeHtml(managerNames(managers)) +
+                "</p></div>"
+              : "";
+            var projectsHtml =
+              projects.length === 0
+                ? '<p class="meta">No projects configured.</p>'
+                : projects
+                    .map(function (project) {
+                      return (
+                        '<article class="project">' +
+                        "<h3>" +
+                        escapeHtml(project.name) +
+                        "</h3>" +
+                        '<p class="meta">Label: ' +
+                        escapeHtml(project.labelText) +
+                        "</p>" +
+                        '<p class="meta">Project managers: ' +
+                        escapeHtml(managerNames(projectManagers[project.id] || [])) +
+                        "</p>" +
+                        "</article>"
+                      );
+                    })
+                    .join("");
+
+            return (
+              '<article class="department">' +
+              '<div class="department-header">' +
+              '<div class="department-title">' +
+              '<span class="swatch" style="background:' +
+              (colorHex[department.departmentColor] || "#dfe1e6") +
+              '"></span>' +
+              '<h2 class="name">' +
+              escapeHtml(department.name) +
+              "</h2>" +
+              "</div>" +
+              '<p class="meta">' +
+              escapeHtml(department.departmentColor) +
+              "</p>" +
+              "</div>" +
+              managerHtml +
+              '<div class="project-list">' +
+              projectsHtml +
+              "</div>" +
+              "</article>"
+            );
+          })
+          .join("");
+      }
+
+      function showError(error) {
+        document.getElementById("role").textContent = "Error";
+        document.getElementById("status").textContent =
+          "Could not load configuration.";
+        document.getElementById("departments").innerHTML =
+          '<div class="error">' + escapeHtml(error.message || error) + "</div>";
+      }
+
+      async function loadState() {
+        var t = window.TrelloPowerUp.iframe();
+        var member = await t.member("id");
+
+        if (!member || !member.id) {
+          throw new Error("Could not determine the current Trello member.");
+        }
+
+        var response = await fetch("/api/project-configurator/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trelloMemberId: member.id }),
+        });
+
+        if (!response.ok) {
+          var body = await response.json().catch(function () {
+            return {};
+          });
+          throw new Error(body.error || "State request failed.");
+        }
+
+        renderState(await response.json());
+      }
+
+      loadState().catch(showError);
+    </script>
+  </body>
+</html>

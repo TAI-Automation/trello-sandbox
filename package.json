@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "db:migrate": "tsx src/db/migrations.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },
@@ -13,10 +14,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^5.2.1"
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/pg": "^8.11.10",
     "@types/node": "^25.8.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"

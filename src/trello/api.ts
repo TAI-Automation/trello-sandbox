@@ -2,7 +2,14 @@ export type TrelloBoard = {
   id: string;
   name: string;
   idOrganization?: string | null;
-  memberships: unknown[];
+  memberships: TrelloMembership[];
+};
+
+export type TrelloMembership = {
+  idMember: string;
+  memberType?: string;
+  unconfirmed?: boolean;
+  deactivated?: boolean;
 };
 
 export type TrelloMember = {
@@ -66,15 +73,96 @@ export async function fetchTrelloBoard(
     id: string;
     name: string;
     idOrganization?: string | null;
-    memberships?: unknown[];
+    memberships?: TrelloMembership[];
   }>(url);
 
   return {
     id: board.id,
     name: board.name,
     idOrganization: board.idOrganization,
-    memberships: Array.isArray(board.memberships) ? board.memberships : [],
+    memberships: normalizeTrelloMemberships(board.memberships),
   };
+}
+
+function normalizeTrelloMemberships(
+  memberships: TrelloMembership[] | undefined
+): TrelloMembership[] {
+  if (!Array.isArray(memberships)) {
+    return [];
+  }
+
+  return memberships
+    .filter((membership) => typeof membership.idMember === "string")
+    .map((membership) => ({
+      idMember: membership.idMember,
+      memberType: membership.memberType,
+      unconfirmed: membership.unconfirmed,
+      deactivated: membership.deactivated,
+    }));
+}
+
+export function isTrelloAdminMembership(
+  membership: TrelloMembership | undefined
+): boolean {
+  return (
+    membership?.memberType === "admin" &&
+    membership.unconfirmed !== true &&
+    membership.deactivated !== true
+  );
+}
+
+export function isTrelloBoardAdmin(
+  board: TrelloBoard,
+  memberId: string
+): boolean {
+  return board.memberships.some(
+    (membership) =>
+      membership.idMember === memberId && isTrelloAdminMembership(membership)
+  );
+}
+
+export async function fetchTrelloOrganizationMemberships(
+  organizationId: string,
+  credentials: TrelloCredentials
+): Promise<TrelloMembership[]> {
+  const url = trelloUrl(
+    `/1/organizations/${organizationId}/memberships`,
+    credentials
+  );
+
+  const memberships = await fetchTrelloJson<TrelloMembership[]>(url);
+
+  return normalizeTrelloMemberships(memberships);
+}
+
+export async function isTrelloWorkspaceAdmin(
+  organizationId: string,
+  memberId: string,
+  credentials: TrelloCredentials
+): Promise<boolean> {
+  const memberships = await fetchTrelloOrganizationMemberships(
+    organizationId,
+    credentials
+  );
+
+  return memberships.some(
+    (membership) =>
+      membership.idMember === memberId && isTrelloAdminMembership(membership)
+  );
+}
+
+export async function isTrelloWorkspaceAdminForBoard(
+  boardId: string,
+  memberId: string,
+  credentials: TrelloCredentials
+): Promise<boolean> {
+  const board = await fetchTrelloBoard(boardId, credentials);
+
+  if (!board.idOrganization) {
+    return isTrelloBoardAdmin(board, memberId);
+  }
+
+  return isTrelloWorkspaceAdmin(board.idOrganization, memberId, credentials);
 }
 
 export async function fetchTrelloBoardMembers(

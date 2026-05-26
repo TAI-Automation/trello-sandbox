@@ -29,7 +29,7 @@
 
       main {
         display: grid;
-        gap: 14px;
+        gap: 16px;
         padding: 18px;
       }
 
@@ -61,15 +61,6 @@
         gap: 6px;
       }
 
-      select {
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        color: var(--text);
-        font: inherit;
-        min-height: 38px;
-        padding: 7px 8px;
-      }
-
       button {
         align-items: center;
         background: var(--brand);
@@ -93,10 +84,73 @@
         background: var(--danger);
       }
 
-      button:disabled,
-      select:disabled {
+      button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
+      }
+
+      form {
+        display: grid;
+        gap: 18px;
+      }
+
+      .priority-grid {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      .priority-option {
+        align-items: center;
+        background: var(--soft);
+        border: 2px solid transparent;
+        border-radius: 8px;
+        color: var(--text);
+        display: grid;
+        gap: 5px;
+        justify-items: center;
+        min-height: 68px;
+        padding: 8px 6px;
+      }
+
+      .priority-option img {
+        height: 22px;
+        width: 22px;
+      }
+
+      .priority-option span {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .priority-option.blue {
+        background: #e9f2ff;
+        color: #0055cc;
+      }
+
+      .priority-option.green {
+        background: #dcfff1;
+        color: #216e4e;
+      }
+
+      .priority-option.yellow {
+        background: #fff7d6;
+        color: #7f5f01;
+      }
+
+      .priority-option.orange {
+        background: #fff3eb;
+        color: #a54800;
+      }
+
+      .priority-option.red {
+        background: #ffedeb;
+        color: #ae2e24;
+      }
+
+      .priority-option.selected {
+        border-color: var(--brand);
+        box-shadow: 0 0 0 1px var(--brand);
       }
 
       .actions {
@@ -129,14 +183,11 @@
       </header>
       <section id="message"></section>
       <form id="priorityForm" hidden>
-        <label>
-          Priority
-          <select name="priority"></select>
-        </label>
+        <input type="hidden" name="priority" value="5" />
+        <div class="priority-grid" id="priorityGrid"></div>
         <div class="actions">
           <button type="submit" id="saveButton">Save</button>
           <button type="button" class="danger" id="clearButton">Clear</button>
-          <button type="button" class="secondary" id="closeButton">Close</button>
         </div>
       </form>
     </main>
@@ -146,6 +197,22 @@
       var currentMemberId = "";
       var currentCardId = "";
       var canModify = false;
+
+      function priorityColor(value) {
+        return value >= 9
+          ? "red"
+          : value >= 7
+            ? "orange"
+            : value >= 5
+              ? "yellow"
+              : value >= 3
+                ? "green"
+                : "blue";
+      }
+
+      function iconUrl(value) {
+        return "/power-up/label-priority/icons/priority-" + value + ".svg";
+      }
 
       function escapeHtml(value) {
         return String(value)
@@ -196,30 +263,66 @@
       }
 
       function renderPriorityOptions(priority) {
-        var select = document.getElementById("priorityForm").elements.priority;
+        var form = document.getElementById("priorityForm");
+        var input = form.elements.priority;
+        var grid = document.getElementById("priorityGrid");
         var selected = priority ? priority.value : 5;
 
-        select.innerHTML = Array.from({ length: 10 }, function (_, index) {
+        input.value = String(selected);
+        grid.innerHTML = Array.from({ length: 10 }, function (_, index) {
           var value = 10 - index;
           return (
-            '<option value="' +
+            '<button type="button" class="priority-option ' +
+            priorityColor(value) +
+            (value === selected ? " selected" : "") +
+            '" data-priority="' +
             value +
-            '" ' +
-            (value === selected ? "selected" : "") +
-            ">Priority " +
+            '">' +
+            '<img alt="" src="' +
+            iconUrl(value) +
+            '" /><span>' +
             value +
-            "</option>"
+            "</span></button>"
           );
         }).join("");
+
+        grid.querySelectorAll("[data-priority]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            if (!canModify) {
+              setReadOnly();
+              return;
+            }
+
+            input.value = String(button.getAttribute("data-priority"));
+            grid.querySelectorAll(".selected").forEach(function (selectedButton) {
+              selectedButton.classList.remove("selected");
+            });
+            button.classList.add("selected");
+          });
+        });
       }
 
       function setReadOnly(reason) {
         var form = document.getElementById("priorityForm");
 
-        form.elements.priority.disabled = true;
+        document
+          .getElementById("priorityGrid")
+          .querySelectorAll("button")
+          .forEach(function (button) {
+            button.disabled = true;
+          });
         document.getElementById("saveButton").disabled = true;
         document.getElementById("clearButton").disabled = true;
         showMessage(reason || "You can view this priority, but cannot change it.", true);
+      }
+
+      function syncPriorityPluginData(priority) {
+        return t.set(
+          "card",
+          "shared",
+          "labelPriority",
+          priority ? String(priority) : null
+        );
       }
 
       async function loadState() {
@@ -278,6 +381,7 @@
               priority: priority,
             }),
           });
+          await syncPriorityPluginData(result.priority.value);
           setStatus("Current priority: " + result.priority.value);
           showMessage("Priority saved.", false);
           window.setTimeout(function () {
@@ -310,6 +414,7 @@
               body: JSON.stringify({ trelloMemberId: currentMemberId }),
             }
           );
+          await syncPriorityPluginData(null);
           setStatus("No priority set");
           showMessage("Priority cleared.", false);
           window.setTimeout(function () {
@@ -328,9 +433,6 @@
       document
         .getElementById("clearButton")
         .addEventListener("click", clearPriority);
-      document.getElementById("closeButton").addEventListener("click", function () {
-        t.closeModal();
-      });
 
       loadState().catch(function (error) {
         setStatus("Could not load priority.");

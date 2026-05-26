@@ -23,13 +23,34 @@
         return t.modal({
           title: "Label Priority",
           url: "/power-up/label-priority/frame.html",
-          height: 360,
+          height: 430,
           fullscreen: false,
         });
       }
 
       function priorityText(priority) {
         return "Priority " + priority.value;
+      }
+
+      function mapPriority(value) {
+        if (!value) {
+          return null;
+        }
+
+        return {
+          value: value,
+          color:
+            value >= 9
+              ? "red"
+              : value >= 7
+                ? "orange"
+                : value >= 5
+                  ? "yellow"
+                  : value >= 3
+                    ? "green"
+                    : "blue",
+          refresh: refreshSeconds,
+        };
       }
 
       async function apiRequest(url, body) {
@@ -53,6 +74,18 @@
           return null;
         }
 
+        var pluginPriority = Number(
+          await t.get("card", "shared", "labelPriority")
+        );
+
+        if (
+          Number.isInteger(pluginPriority) &&
+          pluginPriority >= 1 &&
+          pluginPriority <= 10
+        ) {
+          return mapPriority(pluginPriority);
+        }
+
         var result = await apiRequest("/api/label-priority/priorities/batch", {
           trelloCardIds: [card.id],
         });
@@ -71,7 +104,7 @@
             content: {
               type: "iframe",
               url: t.signUrl("./section.html"),
-              height: 86,
+              height: 1,
             },
             action: {
               text: "Label Priority",

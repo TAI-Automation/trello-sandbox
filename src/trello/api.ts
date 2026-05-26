@@ -54,6 +54,17 @@ export type TrelloCredentials = {
   token: string;
 };
 
+export class TrelloApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly statusText: string,
+    readonly body: string
+  ) {
+    super(message);
+  }
+}
+
 function trelloUrl(pathname: string, credentials: TrelloCredentials): URL {
   const url = new URL(pathname, "https://api.trello.com");
   url.searchParams.set("key", credentials.key);
@@ -70,8 +81,11 @@ export async function fetchTrelloJson<T>(url: URL): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
     );
   }
 
@@ -292,11 +306,15 @@ export async function fetchTrelloCard(
   credentials: TrelloCredentials
 ): Promise<TrelloCard> {
   const url = trelloUrl(`/1/cards/${cardId}`, credentials);
-  url.searchParams.set("fields", "id,idBoard,idList,closed,idLabels");
+  url.searchParams.set("fields", "id,idBoard,idList,closed,idLabels,name,url");
 
   const card = await fetchTrelloJson<TrelloCard>(url);
 
   return normalizeTrelloCard(card);
+}
+
+export function isTrelloNotFoundError(error: unknown): boolean {
+  return error instanceof TrelloApiError && error.status === 404;
 }
 
 export async function createTrelloCard(
@@ -322,8 +340,11 @@ export async function createTrelloCard(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
     );
   }
 
@@ -373,8 +394,11 @@ export async function createTrelloLabel(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
     );
   }
 
@@ -402,8 +426,11 @@ export async function updateTrelloLabel(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
     );
   }
 
@@ -586,8 +613,11 @@ async function sendTrelloRequest(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(
-      `Trello returned ${response.status} ${response.statusText}: ${body}`
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
     );
   }
 }

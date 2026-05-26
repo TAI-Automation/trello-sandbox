@@ -359,6 +359,19 @@
         <section id="message"></section>
 
         <section class="panel">
+          <h2>Label priorities</h2>
+          <div class="toolbar">
+            <p class="meta">
+              Remove priorities for missing cards and cards archived for more than
+              30 days.
+            </p>
+            <button type="button" id="cleanupLabelPrioritiesButton">
+              Clean stale priorities
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
           <h2>Safe lists</h2>
           <form class="toolbar" id="addSafeListForm">
             <label>
@@ -642,6 +655,39 @@
         }
       }
 
+      async function cleanupLabelPriorities() {
+        var button = document.getElementById("cleanupLabelPrioritiesButton");
+
+        showMessage("", false);
+        button.disabled = true;
+
+        try {
+          var result = await apiRequest(
+            "/api/enforcement-dashboard/label-priorities/cleanup",
+            { method: "POST" }
+          );
+          var cleanup = result.cleanup || {};
+          showMessage(
+            "Checked " +
+              (cleanup.checked || 0) +
+              " priorities; deleted " +
+              (cleanup.deleted || 0) +
+              ", kept " +
+              (cleanup.kept || 0) +
+              ", marked archived " +
+              (cleanup.archivedMarked || 0) +
+              ", errors " +
+              (cleanup.errors || 0) +
+              ".",
+            (cleanup.errors || 0) > 0
+          );
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
       async function removeSafeList(button) {
         var safeListId = button.getAttribute("data-remove-safe-list");
         var safeList = safeLists.find(function (item) {
@@ -728,6 +774,9 @@
         .getElementById("addSafeListForm")
         .addEventListener("submit", addSafeList);
       document.getElementById("logoutButton").addEventListener("click", logout);
+      document
+        .getElementById("cleanupLabelPrioritiesButton")
+        .addEventListener("click", cleanupLabelPriorities);
 
       fetch("/api/enforcement-dashboard/session")
         .then(function (response) {

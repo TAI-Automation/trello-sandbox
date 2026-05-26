@@ -187,6 +187,10 @@ export async function removeDashboardBoard(
       "delete from board_project_labels where trello_board_id = $1",
       [trelloBoardId]
     );
+    await client.query(
+      "delete from label_priorities where trello_board_id = $1",
+      [trelloBoardId]
+    );
     const result = await client.query(
       "delete from trello_boards where trello_board_id = $1",
       [trelloBoardId]

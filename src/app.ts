@@ -6,6 +6,7 @@ import { enforcementDashboardRouter } from "./enforcementDashboard/routes.js";
 import { permissionManagerEnforcerRouter } from "./permissionManagerEnforcer/routes.js";
 import { projectConfiguratorRouter } from "./projectConfigurator/routes.js";
 import { createCardRouter } from "./createCard/routes.js";
+import { labelPriorityRouter } from "./labelPriority/routes.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const projectRoot = path.resolve(path.dirname(currentFile), "..");
@@ -27,6 +28,7 @@ export function createApp(): express.Express {
   app.use(enforcementDashboardRouter);
   app.use(projectConfiguratorRouter);
   app.use(createCardRouter);
+  app.use(labelPriorityRouter);
 
   app.get("/", (_req, res) => {
     res.type("html").send(`<!doctype html>

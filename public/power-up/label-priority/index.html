@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Label Priority Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var refreshSeconds = 1800;
+
+      function iconUrl(priority) {
+        return (
+          window.location.origin +
+          "/power-up/label-priority/icons/priority-" +
+          priority +
+          ".svg"
+        );
+      }
+
+      function modal(t) {
+        return t.modal({
+          title: "Label Priority",
+          url: "/power-up/label-priority/frame.html",
+          height: 360,
+          fullscreen: false,
+        });
+      }
+
+      function priorityText(priority) {
+        return "Priority " + priority.value;
+      }
+
+      async function apiRequest(url, body) {
+        var response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+
+        if (!response.ok) {
+          return null;
+        }
+
+        return response.json();
+      }
+
+      async function getCurrentPriority(t) {
+        var card = await t.card("id");
+
+        if (!card || !card.id) {
+          return null;
+        }
+
+        var result = await apiRequest("/api/label-priority/priorities/batch", {
+          trelloCardIds: [card.id],
+        });
+        var priorities = result && result.priorities ? result.priorities : [];
+
+        return priorities.length > 0 ? priorities[0] : null;
+      }
+
+      window.TrelloPowerUp.initialize({
+        "card-buttons": async function (t) {
+          var member = await t.member("id");
+          var card = await t.card("id");
+
+          if (!member || !member.id || !card || !card.id) {
+            return [];
+          }
+
+          var access = await apiRequest("/api/label-priority/access", {
+            trelloMemberId: member.id,
+            trelloCardId: card.id,
+          });
+
+          if (!access || !access.canModify) {
+            return [];
+          }
+
+          return [
+            {
+              text: "Label Priority",
+              callback: modal,
+            },
+          ];
+        },
+
+        "card-badges": async function (t) {
+          var priority = await getCurrentPriority(t);
+
+          if (!priority) {
+            return [];
+          }
+
+          return [
+            {
+              text: String(priority.value),
+              color: priority.color,
+              icon: iconUrl(priority.value),
+              refresh: refreshSeconds,
+            },
+          ];
+        },
+
+        "card-detail-badges": async function (t) {
+          var priority = await getCurrentPriority(t);
+
+          if (!priority) {
+            return [];
+          }
+
+          return [
+            {
+              title: "Label Priority",
+              text: priorityText(priority),
+              color: priority.color,
+              refresh: refreshSeconds,
+              callback: modal,
+            },
+          ];
+        },
+
+        "list-sorters": function () {
+          return [
+            {
+              text: "Priority: High to Low",
+              callback: async function (_t, opts) {
+                var cards = opts && Array.isArray(opts.cards) ? opts.cards : [];
+                var cardIds = cards
+                  .map(function (card) {
+                    return card && card.id;
+                  })
+                  .filter(Boolean);
+                var result = await apiRequest(
+                  "/api/label-priority/priorities/batch",
+                  { trelloCardIds: cardIds }
+                );
+                var priorities = new Map();
+
+                ((result && result.priorities) || []).forEach(function (item) {
+                  priorities.set(item.trelloCardId, item.value);
+                });
+
+                return {
+                  sortedIds: cardIds.slice().sort(function (left, right) {
+                    var leftPriority = priorities.get(left) || 0;
+                    var rightPriority = priorities.get(right) || 0;
+
+                    if (leftPriority !== rightPriority) {
+                      return rightPriority - leftPriority;
+                    }
+
+                    return cardIds.indexOf(left) - cardIds.indexOf(right);
+                  }),
+                };
+              },
+            },
+          ];
+        },
+      });
+    </script>
+  </body>
+</html>

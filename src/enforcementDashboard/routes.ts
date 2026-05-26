@@ -31,6 +31,7 @@ import {
   removeSafeList,
 } from "./safeLists.js";
 import { getPermissionManagerWebhookCallbackUrl } from "../permissionManagerEnforcer/config.js";
+import { cleanupStaleLabelPriorities } from "../labelPriority/cleanup.js";
 
 export const enforcementDashboardRouter = express.Router();
 
@@ -191,6 +192,18 @@ enforcementDashboardRouter.delete(
       }
 
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+enforcementDashboardRouter.post(
+  "/api/enforcement-dashboard/label-priorities/cleanup",
+  requireAdminAuth,
+  async (_req, res, next) => {
+    try {
+      res.json({ cleanup: await cleanupStaleLabelPriorities() });
     } catch (error) {
       next(error);
     }

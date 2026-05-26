@@ -14,6 +14,8 @@ import {
   removeDepartmentManager,
   removeProjectManager,
   updateDepartmentColor,
+  updateDepartmentName,
+  updateProjectName,
 } from "./repository.js";
 import {
   canAssignProjectManagersInDepartment,
@@ -108,6 +110,40 @@ projectConfiguratorRouter.post(
       });
 
       res.status(201).json({ department });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.patch(
+  "/api/project-configurator/departments/:departmentId/name",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const name = readRequiredString(req.body, "name");
+      const { capabilities } = await resolveViewerAndCapabilities(
+        trelloMemberId
+      );
+
+      if (!capabilities.canCreateDepartments) {
+        throw new ForbiddenError(
+          "Only Workspace admins can rename departments."
+        );
+      }
+
+      const department = await updateDepartmentName({
+        departmentId: req.params.departmentId,
+        name,
+      });
+
+      if (!department) {
+        throw new NotFoundError("Department was not found.");
+      }
+
+      const labelSync = await syncAllProjectLabels();
+
+      res.json({ department, labelSync });
     } catch (error) {
       next(error);
     }
@@ -296,6 +332,48 @@ projectConfiguratorRouter.post(
       });
 
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.patch(
+  "/api/project-configurator/projects/:projectId/name",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const name = readRequiredString(req.body, "name");
+      const projectDepartmentId = await getProjectDepartmentId(
+        req.params.projectId
+      );
+
+      if (!projectDepartmentId) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const { capabilities } = await resolveViewerAndCapabilities(
+        trelloMemberId
+      );
+
+      if (!canManageDepartment(capabilities, projectDepartmentId)) {
+        throw new ForbiddenError(
+          "Only Workspace admins and assigned department managers can rename projects."
+        );
+      }
+
+      const project = await updateProjectName({
+        projectId: req.params.projectId,
+        name,
+      });
+
+      if (!project) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const labelSync = await syncAllProjectLabels();
+
+      res.json({ project, labelSync });
     } catch (error) {
       next(error);
     }

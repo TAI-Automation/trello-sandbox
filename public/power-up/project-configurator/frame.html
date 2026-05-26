@@ -182,6 +182,11 @@
         min-width: 0;
       }
 
+      .department-title h2,
+      .project-details h3 {
+        min-width: 0;
+      }
+
       .swatch {
         border-radius: 4px;
         flex: 0 0 auto;
@@ -273,6 +278,32 @@
         overflow-wrap: anywhere;
       }
 
+      .editable-name {
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        color: inherit;
+        cursor: text;
+        display: inline;
+        font: inherit;
+        min-height: 0;
+        padding: 1px 3px;
+        text-align: left;
+      }
+
+      .editable-name:hover,
+      .editable-name:focus {
+        background: var(--surface);
+        border-color: var(--border);
+        color: inherit;
+      }
+
+      .inline-name-editor {
+        font-weight: inherit;
+        min-height: 28px;
+        padding: 3px 6px;
+      }
+
       .manager-list,
       .project-list {
         display: grid;
@@ -342,6 +373,13 @@
         color: var(--danger);
       }
 
+      .icon-button.collapse-button:hover,
+      .icon-button.collapse-button:focus {
+        background: var(--surface);
+        border-color: var(--border);
+        color: var(--text);
+      }
+
       .icon-button.subtle-danger {
         border-color: var(--danger-border);
         color: var(--danger);
@@ -384,6 +422,7 @@
       var currentBoardId = "";
       var currentState = null;
       var activeAction = "";
+      var collapsedDepartmentIds = {};
       var colorHex = {
         green: "#4bce97",
         yellow: "#f5cd47",
@@ -549,17 +588,11 @@
       function projectOptions(projects) {
         return projects
           .map(function (project) {
-            var department = currentState.departments.find(function (item) {
-              return item.id === project.departmentId;
-            });
-            var label = department
-              ? department.name + " / " + project.name
-              : project.name;
             return (
               '<option value="' +
               escapeHtml(project.id) +
               '">' +
-              escapeHtml(label) +
+              escapeHtml(project.name) +
               "</option>"
             );
           })
@@ -590,6 +623,34 @@
         return currentState.projects.filter(function (project) {
           return ids.indexOf(project.departmentId) !== -1;
         });
+      }
+
+      function getDepartmentsForProjects(projects) {
+        var departmentIds = projects.map(function (project) {
+          return project.departmentId;
+        });
+
+        return currentState.departments.filter(function (department) {
+          return departmentIds.indexOf(department.id) !== -1;
+        });
+      }
+
+      function renderEditableName(tagName, type, id, name, canEdit) {
+        var content = canEdit
+          ? '<button type="button" class="editable-name name" data-edit-name="' +
+            escapeHtml(type) +
+            '" data-item-id="' +
+            escapeHtml(id) +
+            '" data-original-name="' +
+            escapeHtml(name) +
+            '" title="Rename ' +
+            escapeHtml(type) +
+            '">' +
+            escapeHtml(name) +
+            "</button>"
+          : '<span class="name">' + escapeHtml(name) + "</span>";
+
+        return "<" + tagName + ">" + content + "</" + tagName + ">";
       }
 
       function showMessage(text, isError) {
@@ -680,6 +741,13 @@
         var form = panel.querySelector("form");
         if (form) {
           form.addEventListener("submit", submitActiveAction);
+        }
+        if (activeAction === "assignProjectManager" && form) {
+          form.elements.departmentId.addEventListener(
+            "change",
+            updateAssignProjectManagerProjectOptions
+          );
+          updateAssignProjectManagerProjectOptions();
         }
         var cancel = panel.querySelector("[data-cancel]");
         if (cancel) {
@@ -820,6 +888,7 @@
 
       function renderAssignProjectManagerForm() {
         var projects = getManageableProjects();
+        var departments = getDepartmentsForProjects(projects);
 
         if (projects.length === 0 || currentState.members.length === 0) {
           return emptyFormMessage(
@@ -832,8 +901,10 @@
           "<form>" +
           "<h2>Assign project manager</h2>" +
           '<div class="form-grid">' +
+          '<label>Department<select name="departmentId" required>' +
+          departmentOptions(departments) +
+          "</select></label>" +
           '<label>Project<select name="projectId" required>' +
-          projectOptions(projects) +
           "</select></label>" +
           '<label>Member<select name="managerTrelloMemberId" required>' +
           memberOptions() +
@@ -845,6 +916,23 @@
           "</div>" +
           "</form>"
         );
+      }
+
+      function updateAssignProjectManagerProjectOptions() {
+        var panel = document.getElementById("actionPanel");
+        var form = panel.querySelector("form");
+
+        if (!form || activeAction !== "assignProjectManager") {
+          return;
+        }
+
+        var departmentId = String(form.elements.departmentId.value || "");
+        var projects = getManageableProjects().filter(function (project) {
+          return project.departmentId === departmentId;
+        });
+
+        form.elements.projectId.innerHTML = projectOptions(projects);
+        form.elements.projectId.disabled = projects.length === 0;
       }
 
       function emptyFormMessage(title, message) {
@@ -965,6 +1053,16 @@
         return "Project created and labels synced.";
       }
 
+      function canRenameDepartment() {
+        return currentState.capabilities.canCreateDepartments === true;
+      }
+
+      function canManageProject(project) {
+        var ids = currentState.capabilities.canCreateProjectsInDepartmentIds || [];
+
+        return ids.indexOf("*") !== -1 || ids.indexOf(project.departmentId) !== -1;
+      }
+
       function canDeleteProject(project) {
         var ids = currentState.capabilities.canDeleteProjectsInDepartmentIds || [];
 
@@ -1028,6 +1126,135 @@
         } finally {
           button.disabled = false;
         }
+      }
+
+      function toggleDepartment(button) {
+        var departmentId = String(button.getAttribute("data-toggle-department") || "");
+
+        if (!departmentId) {
+          return;
+        }
+
+        collapsedDepartmentIds[departmentId] = !collapsedDepartmentIds[departmentId];
+        renderState(currentState);
+      }
+
+      function startInlineNameEdit(button) {
+        var type = String(button.getAttribute("data-edit-name") || "");
+        var itemId = String(button.getAttribute("data-item-id") || "");
+        var originalName = String(button.getAttribute("data-original-name") || "");
+        var input = document.createElement("input");
+        var cancelled = false;
+
+        input.className = "inline-name-editor";
+        input.maxLength = type === "project" ? 160 : 120;
+        input.value = originalName;
+        input.setAttribute("aria-label", "Rename " + type);
+
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") {
+            cancelled = true;
+            renderState(currentState);
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            input.blur();
+          }
+        });
+        input.addEventListener("blur", async function () {
+          if (cancelled) {
+            return;
+          }
+
+          await submitInlineNameEdit(type, itemId, originalName, input.value);
+        });
+
+        button.replaceWith(input);
+        input.focus();
+        input.select();
+      }
+
+      async function submitInlineNameEdit(type, itemId, originalName, nextName) {
+        var name = String(nextName || "").trim();
+
+        showMessage("", false);
+
+        if (!name) {
+          showMessage("Name cannot be blank.", true);
+          renderState(currentState);
+          return;
+        }
+
+        if (normalizeName(name) === normalizeName(originalName)) {
+          renderState(currentState);
+          return;
+        }
+
+        try {
+          if (type === "department") {
+            await renameDepartment(itemId, name);
+          } else if (type === "project") {
+            await renameProject(itemId, name);
+          } else {
+            throw new Error("Could not identify the item to rename.");
+          }
+
+          await loadState();
+          showMessage("Name updated and labels synced.", false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+          renderState(currentState);
+        }
+      }
+
+      async function renameDepartment(departmentId, name) {
+        if (
+          currentState.departments.some(function (department) {
+            return (
+              department.id !== departmentId &&
+              normalizeName(department.name) === normalizeName(name)
+            );
+          })
+        ) {
+          throw new Error("A department with that name already exists.");
+        }
+
+        return apiRequest(
+          "/api/project-configurator/departments/" +
+            encodeURIComponent(departmentId) +
+            "/name",
+          { name: name },
+          "PATCH"
+        );
+      }
+
+      async function renameProject(projectId, name) {
+        var project = currentState.projects.find(function (item) {
+          return item.id === projectId;
+        });
+
+        if (!project) {
+          throw new Error("Project was not found.");
+        }
+
+        if (
+          currentState.projects.some(function (item) {
+            return (
+              item.id !== projectId &&
+              item.departmentId === project.departmentId &&
+              normalizeName(item.name) === normalizeName(name)
+            );
+          })
+        ) {
+          throw new Error("A project with that name already exists in this department.");
+        }
+
+        return apiRequest(
+          "/api/project-configurator/projects/" +
+            encodeURIComponent(projectId) +
+            "/name",
+          { name: name },
+          "PATCH"
+        );
       }
 
       async function revokeManager(button, type) {
@@ -1174,6 +1401,7 @@
           .map(function (department) {
             var projects = projectsByDepartment[department.id] || [];
             var managers = departmentManagers[department.id] || [];
+            var collapsed = collapsedDepartmentIds[department.id] === true;
             var managerHtml = state.capabilities.canViewDepartmentManagers
               ? '<div class="manager-list"><p class="meta">Department managers</p>' +
                 renderManagers(managers, {
@@ -1201,9 +1429,13 @@
                         '<article class="project">' +
                         '<div class="project-header">' +
                         '<div class="project-details">' +
-                        "<h3>" +
-                        escapeHtml(project.name) +
-                        "</h3>" +
+                        renderEditableName(
+                          "h3",
+                          "project",
+                          project.id,
+                          project.name,
+                          canManageProject(project)
+                        ) +
                         '<p class="meta">Label: ' +
                         escapeHtml(project.labelText) +
                         "</p>" +
@@ -1231,20 +1463,52 @@
               '<span class="swatch" style="background:' +
               (colorHex[department.departmentColor] || "#dfe1e6") +
               '"></span>' +
-              '<h2 class="name">' +
+              renderEditableName(
+                "h2",
+                "department",
+                department.id,
+                department.name,
+                canRenameDepartment()
+              ) +
+              "</div>" +
+              '<button type="button" class="icon-button collapse-button" title="' +
+              (collapsed ? "Expand department" : "Collapse department") +
+              '" aria-label="' +
+              (collapsed ? "Expand " : "Collapse ") +
               escapeHtml(department.name) +
-              "</h2>" +
+              '" data-toggle-department="' +
+              escapeHtml(department.id) +
+              '">' +
+              (collapsed ? "&#9656;" : "&#9662;") +
+              "</button>" +
               "</div>" +
-              "</div>" +
+              '<div class="department-body" ' +
+              (collapsed ? "hidden" : "") +
+              ">" +
               managerHtml +
               '<div class="project-list">' +
               projectsHtml +
+              "</div>" +
               "</div>" +
               "</article>"
             );
           })
           .join("");
 
+        departments
+          .querySelectorAll("button[data-toggle-department]")
+          .forEach(function (button) {
+            button.addEventListener("click", function () {
+              toggleDepartment(button);
+            });
+          });
+        departments
+          .querySelectorAll("button[data-edit-name]")
+          .forEach(function (button) {
+            button.addEventListener("click", function () {
+              startInlineNameEdit(button);
+            });
+          });
         departments
           .querySelectorAll("button[data-delete-project]")
           .forEach(function (button) {

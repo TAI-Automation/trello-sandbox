@@ -351,6 +351,27 @@ export async function updateDepartmentColor(input: {
   return row ? mapDepartment(row) : null;
 }
 
+export async function updateDepartmentName(input: {
+  departmentId: string;
+  name: string;
+}): Promise<DepartmentSummary | null> {
+  const result = await getDbPool().query<DepartmentRow>(
+    `
+      update departments
+      set name = $2,
+          updated_at = now()
+      where id = $1
+        and archived_at is null
+      returning id::text, name, department_color, sort_order
+    `,
+    [input.departmentId, input.name]
+  );
+
+  const row = result.rows[0];
+
+  return row ? mapDepartment(row) : null;
+}
+
 export async function createProject(input: {
   departmentId: string;
   name: string;
@@ -381,6 +402,35 @@ export async function createProject(input: {
   );
 
   return mapProject(requireRow(result.rows[0], "Project was not created."));
+}
+
+export async function updateProjectName(input: {
+  projectId: string;
+  name: string;
+}): Promise<ProjectSummary | null> {
+  const result = await getDbPool().query<ProjectRow>(
+    `
+      update projects
+      set name = $2,
+          updated_at = now()
+      from departments
+      where projects.id = $1
+        and projects.department_id = departments.id
+        and projects.archived_at is null
+        and departments.archived_at is null
+      returning
+        projects.id::text,
+        projects.department_id::text,
+        projects.name,
+        departments.name as department_name,
+        departments.department_color
+    `,
+    [input.projectId, input.name]
+  );
+
+  const row = result.rows[0];
+
+  return row ? mapProject(row) : null;
 }
 
 export async function deleteProject(projectId: string): Promise<boolean> {

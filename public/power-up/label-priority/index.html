@@ -62,29 +62,22 @@
       }
 
       window.TrelloPowerUp.initialize({
-        "card-buttons": async function (t) {
-          var member = await t.member("id");
-          var card = await t.card("id");
-
-          if (!member || !member.id || !card || !card.id) {
-            return [];
-          }
-
-          var access = await apiRequest("/api/label-priority/access", {
-            trelloMemberId: member.id,
-            trelloCardId: card.id,
-          });
-
-          if (!access || !access.canModify) {
-            return [];
-          }
-
-          return [
-            {
+        "card-back-section": function (t) {
+          return {
+            title: "Priority",
+            icon:
+              window.location.origin +
+              "/power-up/label-priority/icons/section-icon.svg",
+            content: {
+              type: "iframe",
+              url: "/power-up/label-priority/section.html",
+              height: 86,
+            },
+            action: {
               text: "Label Priority",
               callback: modal,
             },
-          ];
+          };
         },
 
         "card-badges": async function (t) {
@@ -113,7 +106,7 @@
 
           return [
             {
-              title: "Label Priority",
+              title: "Priority",
               text: priorityText(priority),
               color: priority.color,
               refresh: refreshSeconds,

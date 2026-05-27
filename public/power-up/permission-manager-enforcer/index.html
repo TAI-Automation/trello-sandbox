@@ -58,7 +58,7 @@
 
       async function getMissingLabelStatus(t) {
         var board = await t.board("id");
-        var card = await t.card("id", "idLabels");
+        var card = await t.card("id");
 
         if (!board || !board.id || !card || !card.id) {
           return null;
@@ -67,7 +67,6 @@
         return apiRequest("/api/permission-manager-enforcer/missing-label-status", {
           trelloBoardId: board.id,
           trelloCardId: card.id,
-          cardLabelIds: Array.isArray(card.idLabels) ? card.idLabels : null,
         });
       }
 
@@ -104,7 +103,9 @@
         },
 
         "card-badges": async function (t) {
-          var status = await getMissingLabelStatus(t);
+          var status = await getMissingLabelStatus(t).catch(function () {
+            return null;
+          });
 
           if (!status || !status.missingProjectLabel) {
             return [];
@@ -121,7 +122,9 @@
         },
 
         "card-detail-badges": async function (t) {
-          var status = await getMissingLabelStatus(t);
+          var status = await getMissingLabelStatus(t).catch(function () {
+            return null;
+          });
 
           if (!status || !status.missingProjectLabel) {
             return [];

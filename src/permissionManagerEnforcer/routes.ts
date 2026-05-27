@@ -60,12 +60,19 @@ permissionManagerEnforcerRouter.post(
       const cardLabelIds =
         readOptionalStringArray(req.body, "cardLabelIds") ??
         (await fetchCardLabelIds(trelloCardId));
+      const missingProjectLabel = !(await hasSyncedProjectLabel({
+        trelloBoardId,
+        cardLabelIds,
+      }));
 
+      console.log("permission-manager-enforcer missing-label-status", {
+        trelloBoardId,
+        trelloCardId,
+        cardLabelCount: cardLabelIds.length,
+        missingProjectLabel,
+      });
       res.json({
-        missingProjectLabel: !(await hasSyncedProjectLabel({
-          trelloBoardId,
-          cardLabelIds,
-        })),
+        missingProjectLabel,
       });
     } catch (error) {
       next(error);

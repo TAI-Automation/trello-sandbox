@@ -64,28 +64,60 @@ export async function enforceTrelloWebhook(payload: unknown): Promise<void> {
   const action = readAction(payload);
 
   if (!action?.type) {
+    console.log("permission-manager-enforcer webhook ignored", {
+      reason: "missing-action-type",
+    });
     return;
   }
 
   const actorMemberId = action.idMemberCreator ?? action.memberCreator?.id;
 
   if (!actorMemberId || actorMemberId === getBotMemberId()) {
+    console.log("permission-manager-enforcer webhook ignored", {
+      type: action.type,
+      reason: actorMemberId ? "bot-actor" : "missing-actor",
+      actorMemberId,
+    });
     return;
   }
 
   const boardId = getActionBoardId(action);
 
   if (!boardId) {
+    console.log("permission-manager-enforcer webhook ignored", {
+      type: action.type,
+      reason: "missing-board",
+      actorMemberId,
+    });
     return;
   }
 
   const board = await getDashboardBoard(boardId);
+
+  console.log("permission-manager-enforcer webhook received", {
+    type: action.type,
+    boardId,
+    cardId: action.data?.card?.id,
+    labelId: action.data?.label?.id,
+    actorMemberId,
+    enforcementEnabled: board?.enforcementEnabled === true,
+  });
 
   if (!board?.enforcementEnabled) {
     return;
   }
 
   switch (action.type) {
+    case "createCard":
+    case "copyCard":
+      console.log("permission-manager-enforcer card create observed", {
+        type: action.type,
+        boardId,
+        cardId: action.data?.card?.id,
+        actorMemberId,
+        action: "no-webhook-badge-mutation",
+      });
+      break;
     case "updateCard":
       await enforceCardMoveIfNeeded(action, actorMemberId, boardId);
       break;
@@ -116,6 +148,12 @@ async function enforceCardMoveIfNeeded(
   );
 
   if (isAdmin) {
+    console.log("permission-manager-enforcer card move bypassed", {
+      boardId,
+      cardId: action.data?.card?.id,
+      actorMemberId,
+      reason: "admin",
+    });
     return;
   }
 
@@ -131,7 +169,21 @@ async function enforceCardMoveIfNeeded(
     action.data?.listBefore?.id ??
     action.data?.card?.idList;
 
-  if (await cardHasSyncedProjectLabel(action, sourceBoardId ?? boardId)) {
+  const hasSyncedProjectLabel = await cardHasSyncedProjectLabel(
+    action,
+    sourceBoardId ?? boardId
+  );
+
+  console.log("permission-manager-enforcer card move checked", {
+    boardId,
+    cardId,
+    actorMemberId,
+    sourceBoardId,
+    sourceListId,
+    hasSyncedProjectLabel,
+  });
+
+  if (hasSyncedProjectLabel) {
     return;
   }
 

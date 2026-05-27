@@ -2,9 +2,6 @@ import { trelloLabelColors } from "../config/projectConfigurator.js";
 import {
   listActiveDepartments,
   listActiveProjects,
-  listDepartmentManagerAssignments,
-  listMembers,
-  listProjectManagerAssignments,
 } from "./repository.js";
 import {
   resolveCapabilities,
@@ -18,55 +15,37 @@ export type ProjectConfiguratorState = {
   capabilities: ProjectConfiguratorCapabilities;
   departments: Awaited<ReturnType<typeof listActiveDepartments>>;
   projects: Awaited<ReturnType<typeof listActiveProjects>>;
-  departmentManagers: Awaited<
-    ReturnType<typeof listDepartmentManagerAssignments>
-  >;
-  projectManagers: Awaited<ReturnType<typeof listProjectManagerAssignments>>;
-  members: Awaited<ReturnType<typeof listMembers>>;
   colors: {
     all: string[];
-    used: string[];
-    available: string[];
+    usedDepartmentColors: string[];
+    availableDepartmentColors: string[];
   };
 };
 
 export async function getProjectConfiguratorState(
   trelloMemberId: string
 ): Promise<ProjectConfiguratorState> {
-  const viewer = await resolveProjectConfiguratorViewer(trelloMemberId);
-  const capabilities = resolveCapabilities(viewer);
-
-  const [
-    departments,
-    projects,
-    departmentManagers,
-    projectManagers,
-    members,
-  ] = await Promise.all([
+  const [viewer, departments, projects] = await Promise.all([
+    resolveProjectConfiguratorViewer(trelloMemberId),
     listActiveDepartments(),
     listActiveProjects(),
-    capabilities.canViewDepartmentManagers
-      ? listDepartmentManagerAssignments()
-      : Promise.resolve([]),
-    listProjectManagerAssignments(),
-    listMembers(),
   ]);
-
-  const used = departments.map((department) => department.departmentColor);
-  const usedSet = new Set(used);
+  const usedDepartmentColors = departments.map(
+    (department) => department.departmentColor
+  );
+  const usedDepartmentColorSet = new Set(usedDepartmentColors);
 
   return {
     viewer,
-    capabilities,
+    capabilities: resolveCapabilities(),
     departments,
     projects,
-    departmentManagers,
-    projectManagers,
-    members,
     colors: {
       all: [...trelloLabelColors],
-      used,
-      available: trelloLabelColors.filter((color) => !usedSet.has(color)),
+      usedDepartmentColors,
+      availableDepartmentColors: trelloLabelColors.filter(
+        (color) => !usedDepartmentColorSet.has(color)
+      ),
     },
   };
 }

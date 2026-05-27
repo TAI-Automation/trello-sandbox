@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Permission Manager Enforcer Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var badgeRefreshSeconds = 60;
+      var missingLabelText = "Missing label!";
+
+      function stopIconUrl() {
+        return (
+          window.location.origin +
+          "/power-up/permission-manager-enforcer/icons/stop-sign.svg"
+        );
+      }
+
+      function enforcementButton() {
+        return {
+          text: "Enforcement",
+          callback: function (t) {
+            return t.modal({
+              title: "Enforcement",
+              url: "/power-up/permission-manager-enforcer/frame.html",
+              height: 220,
+              fullscreen: false,
+            });
+          },
+        };
+      }
+
+      async function apiRequest(url, body) {
+        var response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+
+        if (!response.ok) {
+          return null;
+        }
+
+        return response.json();
+      }
+
+      async function getMemberAndBoard(t) {
+        var member = await t.member("id");
+        var board = await t.board("id");
+
+        return {
+          memberId: member && member.id,
+          boardId: board && board.id,
+        };
+      }
+
+      async function getMissingLabelStatus(t) {
+        var board = await t.board("id");
+        var card = await t.card("id", "idLabels");
+
+        if (!board || !board.id || !card || !card.id) {
+          return null;
+        }
+
+        return apiRequest("/api/permission-manager-enforcer/missing-label-status", {
+          trelloBoardId: board.id,
+          trelloCardId: card.id,
+          cardLabelIds: Array.isArray(card.idLabels) ? card.idLabels : null,
+        });
+      }
+
+      window.TrelloPowerUp.initialize({
+        "board-buttons": async function (t) {
+          try {
+            var context = await getMemberAndBoard(t);
+            var state =
+              context.memberId && context.boardId
+                ? await apiRequest(
+                    "/api/permission-manager-enforcer/enforcement/state",
+                    {
+                      trelloMemberId: context.memberId,
+                      trelloBoardId: context.boardId,
+                    }
+                  )
+                : null;
+
+            return state && state.isAdmin ? [enforcementButton()] : [];
+          } catch (_error) {
+            return [];
+          }
+        },
+
+        "card-back-section": function (t) {
+          return {
+            title: "Permission Manager Enforcer",
+            content: {
+              type: "iframe",
+              url: t.signUrl("./section.html"),
+              height: 1,
+            },
+          };
+        },
+
+        "card-badges": async function (t) {
+          var status = await getMissingLabelStatus(t);
+
+          if (!status || !status.missingProjectLabel) {
+            return [];
+          }
+
+          return [
+            {
+              text: missingLabelText,
+              color: "red",
+              icon: stopIconUrl(),
+              refresh: badgeRefreshSeconds,
+            },
+          ];
+        },
+
+        "card-detail-badges": async function (t) {
+          var status = await getMissingLabelStatus(t);
+
+          if (!status || !status.missingProjectLabel) {
+            return [];
+          }
+
+          return [
+            {
+              title: "Project Label",
+              text: missingLabelText,
+              color: "red",
+              refresh: badgeRefreshSeconds,
+            },
+          ];
+        },
+      });
+    </script>
+  </body>
+</html>

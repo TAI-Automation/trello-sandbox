@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Stop">
+  <path fill="#e34935" d="M22 4h20l18 18v20L42 60H22L4 42V22z"/>
+  <path fill="#fff" d="M21 19h22v26H21z"/>
+  <path fill="#e34935" d="M25 23h14v5H25zm0 8h14v5H25zm0 8h14v2H25z"/>
+</svg>

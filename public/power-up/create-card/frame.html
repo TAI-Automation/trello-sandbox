@@ -163,10 +163,6 @@
         </label>
         <div class="form-grid">
           <label
-            >Department
-            <select name="departmentId" required></select>
-          </label>
-          <label
             >Project
             <select name="projectId" required></select>
           </label>
@@ -222,20 +218,14 @@
         );
       }
 
-      function projectsForDepartment(departmentId) {
-        return currentState.projects.filter(function (project) {
-          return project.departmentId === departmentId;
-        });
-      }
-
       function renderForm() {
         var form = document.getElementById("createCardForm");
-        var departmentSelect = form.elements.departmentId;
+        var projectSelect = form.elements.projectId;
         var listSelect = form.elements.listId;
 
-        departmentSelect.innerHTML = currentState.departments
-          .map(function (department) {
-            return optionHtml(department.id, department.name);
+        projectSelect.innerHTML = currentState.projects
+          .map(function (project) {
+            return optionHtml(project.id, project.name);
           })
           .join("");
         listSelect.innerHTML = currentState.lists
@@ -244,29 +234,9 @@
           })
           .join("");
 
-        updateProjectOptions();
-        form.hidden = false;
-        setStatus(
-          currentState.projects.length +
-            " projects available across " +
-            currentState.departments.length +
-            " departments"
-        );
-      }
-
-      function updateProjectOptions() {
-        var form = document.getElementById("createCardForm");
-        var departmentId = String(form.elements.departmentId.value || "");
-        var projectSelect = form.elements.projectId;
-        var projects = projectsForDepartment(departmentId);
-
-        projectSelect.innerHTML = projects
-          .map(function (project) {
-            return optionHtml(project.id, project.name);
-          })
-          .join("");
-        projectSelect.disabled = projects.length === 0;
         updateSubmitState();
+        form.hidden = false;
+        setStatus(currentState.projects.length + " synced projects available");
       }
 
       function updateSubmitState() {
@@ -275,7 +245,6 @@
 
         button.disabled =
           !String(form.elements.name.value || "").trim() ||
-          !String(form.elements.departmentId.value || "") ||
           !String(form.elements.projectId.value || "") ||
           !String(form.elements.listId.value || "");
       }
@@ -325,7 +294,7 @@
         if (currentState.projects.length === 0) {
           setStatus("No projects are available.");
           showMessage(
-            "No permitted projects with synced labels are available on this board.",
+            "No projects with synced labels are available on this board.",
             "error"
           );
           return;
@@ -347,7 +316,6 @@
             trelloMemberId: currentMemberId,
             trelloBoardId: currentBoardId,
             name: String(form.elements.name.value || "").trim(),
-            departmentId: String(form.elements.departmentId.value || ""),
             projectId: String(form.elements.projectId.value || ""),
             listId: String(form.elements.listId.value || ""),
           });
@@ -373,9 +341,6 @@
       document
         .getElementById("createCardForm")
         .addEventListener("submit", submitForm);
-      document
-        .getElementById("createCardForm")
-        .elements.departmentId.addEventListener("change", updateProjectOptions);
       document
         .getElementById("createCardForm")
         .addEventListener("input", updateSubmitState);

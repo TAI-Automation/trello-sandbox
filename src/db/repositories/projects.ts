@@ -1,8 +1,8 @@
 export type ProjectRecord = {
   id: string;
-  departmentId: string;
   name: string;
   nameNormalized: string;
+  projectColor: string;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

@@ -7,7 +7,6 @@ create table if not exists departments (
   archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (name_normalized),
   check (
     department_color in (
       'green',
@@ -43,6 +42,10 @@ create table if not exists departments (
     )
   )
 );
+
+create unique index if not exists departments_active_name_unique
+  on departments (name_normalized)
+  where archived_at is null;
 
 create unique index if not exists departments_active_color_unique
   on departments (department_color)

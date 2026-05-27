@@ -1,7 +1,6 @@
 export type LabelPriorityColor = "blue" | "green" | "yellow" | "orange" | "red";
 
 export const labelPriorityConfig = {
-  projectManagersCanModifyPriorities: true,
   badgeRefreshSeconds: 1800,
   archivedCleanupAfterDays: 30,
 };

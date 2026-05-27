@@ -33,21 +33,9 @@ export const trelloLabelColors = [
 
 export type TrelloLabelColor = (typeof trelloLabelColors)[number];
 
-export type ProjectConfiguratorRole =
-  | "admin"
-  | "department_manager"
-  | "project_manager"
-  | "normal_user";
-
-const departmentManagersVisibleTo: ProjectConfiguratorRole[] = [
-  "admin",
-  "department_manager",
-];
+export type ProjectConfiguratorRole = "admin" | "normal_user";
 
 export const projectConfiguratorConfig = {
-  visibility: {
-    departmentManagersVisibleTo,
-  },
   iframe: {
     title: "Project Configurator",
     height: 760,

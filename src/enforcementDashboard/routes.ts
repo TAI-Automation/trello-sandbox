@@ -13,25 +13,16 @@ import {
   markBoardLabelSyncComplete,
   removeDashboardBoard,
   saveBoardError,
-  saveBoardWebhookState,
   upsertDashboardBoard,
 } from "./repository.js";
 import { syncProjectLabelsForBoard } from "../projectConfigurator/labelSync.js";
 import { getTrelloCredentials } from "../projectConfigurator/permissions.js";
-import {
-  createTrelloWebhook,
-  fetchTrelloWebhook,
-  fetchTrelloBoard,
-  updateTrelloWebhookActive,
-  type TrelloWebhook,
-} from "../trello/api.js";
-import {
-  addSafeList,
-  listSafeLists,
-  removeSafeList,
-} from "./safeLists.js";
-import { getPermissionManagerWebhookCallbackUrl } from "../permissionManagerEnforcer/config.js";
+import { fetchTrelloBoard } from "../trello/api.js";
 import { cleanupStaleLabelPriorities } from "../labelPriority/cleanup.js";
+import {
+  deactivateWebhookIfPresent,
+  setBoardEnforcementState,
+} from "./webhookState.js";
 
 export const enforcementDashboardRouter = express.Router();
 
@@ -74,12 +65,9 @@ enforcementDashboardRouter.get(
   requireAdminAuth,
   async (_req, res, next) => {
     try {
-      const [boards, safeLists] = await Promise.all([
-        listDashboardBoards(),
-        listSafeLists(),
-      ]);
+      const boards = await listDashboardBoards();
 
-      res.json({ boards, safeLists });
+      res.json({ boards });
     } catch (error) {
       next(error);
     }
@@ -128,15 +116,9 @@ enforcementDashboardRouter.patch(
 
     try {
       const enabled = readRequiredBoolean(req.body, "enabled");
-      const board = await getRequiredBoard(trelloBoardId);
-      const webhook = enabled
-        ? await ensureWebhookActive(board.trelloBoardId, board.trelloWebhookId)
-        : await deactivateWebhookIfPresent(board.trelloWebhookId);
-      const updated = await saveBoardWebhookState({
-        trelloBoardId: board.trelloBoardId,
-        enforcementEnabled: enabled,
-        webhookActive: enabled ? webhook?.active === true : false,
-        trelloWebhookId: webhook?.id ?? board.trelloWebhookId,
+      const updated = await setBoardEnforcementState({
+        trelloBoardId,
+        enabled,
       });
 
       res.json({ board: updated });
@@ -148,51 +130,6 @@ enforcementDashboardRouter.patch(
         }).catch(() => undefined);
       }
 
-      next(error);
-    }
-  }
-);
-
-enforcementDashboardRouter.get(
-  "/api/enforcement-dashboard/safe-lists",
-  requireAdminAuth,
-  async (_req, res, next) => {
-    try {
-      res.json({ safeLists: await listSafeLists() });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-enforcementDashboardRouter.post(
-  "/api/enforcement-dashboard/safe-lists",
-  requireAdminAuth,
-  async (req, res, next) => {
-    try {
-      const name = readRequiredString(req.body, "name");
-      const safeList = await addSafeList(name);
-
-      res.status(201).json({ safeList });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-enforcementDashboardRouter.delete(
-  "/api/enforcement-dashboard/safe-lists/:safeListId",
-  requireAdminAuth,
-  async (req, res, next) => {
-    try {
-      const safeListId = readRouteParam(req.params.safeListId);
-
-      if (!(await removeSafeList(safeListId))) {
-        throw new NotFoundError("Safe list was not found.");
-      }
-
-      res.status(204).send();
-    } catch (error) {
       next(error);
     }
   }
@@ -247,58 +184,6 @@ async function getRequiredBoard(trelloBoardId: string) {
   }
 
   return board;
-}
-
-async function ensureWebhookActive(
-  trelloBoardId: string,
-  webhookId: string | null
-): Promise<TrelloWebhook> {
-  const callbackUrl = getPermissionManagerWebhookCallbackUrl();
-
-  if (webhookId) {
-    try {
-      const webhook = await fetchTrelloWebhook(
-        webhookId,
-        getTrelloCredentials()
-      );
-
-      if (webhook.callbackURL === callbackUrl) {
-        return updateTrelloWebhookActive(
-          webhookId,
-          true,
-          getTrelloCredentials()
-        );
-      }
-
-      await updateTrelloWebhookActive(
-        webhookId,
-        false,
-        getTrelloCredentials()
-      ).catch(() => undefined);
-    } catch {
-      return createTrelloWebhook(
-        trelloBoardId,
-        callbackUrl,
-        getTrelloCredentials()
-      );
-    }
-  }
-
-  return createTrelloWebhook(
-    trelloBoardId,
-    callbackUrl,
-    getTrelloCredentials()
-  );
-}
-
-async function deactivateWebhookIfPresent(
-  webhookId: string | null
-): Promise<TrelloWebhook | null> {
-  if (!webhookId) {
-    return null;
-  }
-
-  return updateTrelloWebhookActive(webhookId, false, getTrelloCredentials());
 }
 
 function normalizeBoardId(value: string): string {

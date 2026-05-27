@@ -31,6 +31,14 @@ export type TrelloLabel = {
   color: string;
 };
 
+export type TrelloCustomField = {
+  id: string;
+  idModel: string;
+  modelType: string;
+  name: string;
+  type: string;
+};
+
 export type TrelloCard = {
   id: string;
   idBoard: string;
@@ -462,6 +470,95 @@ export async function listTrelloBoardLabels(
   return labels.map(normalizeTrelloLabel);
 }
 
+export async function listTrelloBoardCustomFields(
+  boardId: string,
+  credentials: TrelloCredentials
+): Promise<TrelloCustomField[]> {
+  const url = trelloUrl(`/1/boards/${boardId}/customFields`, credentials);
+
+  const customFields = await fetchTrelloJson<TrelloCustomField[]>(url);
+
+  if (!Array.isArray(customFields)) {
+    throw new Error("Trello returned an invalid custom fields response.");
+  }
+
+  return customFields.map(normalizeTrelloCustomField);
+}
+
+export async function createTrelloBoardTextCustomField(
+  input: {
+    boardId: string;
+    name: string;
+  },
+  credentials: TrelloCredentials
+): Promise<TrelloCustomField> {
+  const url = trelloUrl("/1/customFields", credentials);
+  url.searchParams.set("idModel", input.boardId);
+  url.searchParams.set("modelType", "board");
+  url.searchParams.set("name", input.name);
+  url.searchParams.set("type", "text");
+  url.searchParams.set("pos", "bottom");
+  url.searchParams.set("display_cardFront", "true");
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
+    );
+  }
+
+  return normalizeTrelloCustomField(
+    (await response.json()) as TrelloCustomField
+  );
+}
+
+export async function setTrelloCardTextCustomField(
+  input: {
+    cardId: string;
+    customFieldId: string;
+    value: string;
+  },
+  credentials: TrelloCredentials
+): Promise<void> {
+  const url = trelloUrl(
+    `/1/cards/${input.cardId}/customField/${input.customFieldId}/item`,
+    credentials
+  );
+
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      value: {
+        text: input.value,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new TrelloApiError(
+      `Trello returned ${response.status} ${response.statusText}: ${body}`,
+      response.status,
+      response.statusText,
+      body
+    );
+  }
+}
+
 export async function updateTrelloList(
   input: {
     listId: string;
@@ -506,6 +603,26 @@ function normalizeTrelloLabel(label: TrelloLabel): TrelloLabel {
     idBoard: label.idBoard,
     name: label.name,
     color: label.color,
+  };
+}
+
+function normalizeTrelloCustomField(
+  customField: TrelloCustomField
+): TrelloCustomField {
+  const display = (
+    customField as TrelloCustomField & {
+      display?: {
+        name?: string;
+      };
+    }
+  ).display;
+
+  return {
+    id: customField.id,
+    idModel: customField.idModel,
+    modelType: customField.modelType,
+    name: display?.name ?? customField.name,
+    type: customField.type,
   };
 }
 

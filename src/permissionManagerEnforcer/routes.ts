@@ -15,6 +15,10 @@ import {
   getPermissionManagerWebhookCallbackUrl,
   getTrelloSecret,
 } from "./config.js";
+import {
+  previewLegacyLabelPurge,
+  purgeLegacyLabels,
+} from "./labelPurge.js";
 import { enforceTrelloWebhook } from "./service.js";
 import { isValidTrelloWebhook } from "../trello/webhooks.js";
 
@@ -92,12 +96,16 @@ permissionManagerEnforcerRouter.post(
         getTrelloCredentials()
       );
       const board = await getDashboardBoard(trelloBoardId);
+      const labelPurgePreview = isAdmin
+        ? await previewLegacyLabelPurge(trelloBoardId)
+        : null;
 
       res.json({
         isAdmin,
         enforcementEnabled: board?.enforcementEnabled ?? false,
         webhookActive: board?.webhookActive ?? false,
         lastError: board?.lastError ?? null,
+        labelPurgePreview,
       });
     } catch (error) {
       next(error);
@@ -147,6 +155,32 @@ permissionManagerEnforcerRouter.post(
         webhookActive: board.webhookActive,
         lastError: board.lastError,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+permissionManagerEnforcerRouter.post(
+  "/api/permission-manager-enforcer/labels/purge-legacy",
+  async (req, res, next) => {
+    try {
+      const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const trelloBoardId = readRequiredString(req.body, "trelloBoardId");
+      const isAdmin = await isTrelloWorkspaceAdmin(
+        getOrganizationId(),
+        trelloMemberId,
+        getTrelloCredentials()
+      );
+
+      if (!isAdmin) {
+        throw new ForbiddenError(
+          "Only Trello workspace admins can purge legacy labels."
+        );
+      }
+
+      const labelPurge = await purgeLegacyLabels(trelloBoardId);
+      res.json({ isAdmin, labelPurge });
     } catch (error) {
       next(error);
     }

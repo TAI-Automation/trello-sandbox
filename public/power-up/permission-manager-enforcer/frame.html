@@ -70,6 +70,14 @@
         min-height: 34px;
         padding: 7px 12px;
       }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      button[hidden] {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -79,6 +87,9 @@
         <input type="checkbox" id="enabled" disabled />
       </label>
       <div class="status" id="status">Loading enforcement state...</div>
+      <button type="button" class="danger" id="purgeLabelsButton" hidden>
+        Purge legacy labels
+      </button>
       <button type="button" id="closeButton">Close</button>
     </main>
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
@@ -112,20 +123,42 @@
 
       function render(state) {
         var enabled = document.getElementById("enabled");
+        var purgeLabelsButton = document.getElementById("purgeLabelsButton");
+        var purgeable =
+          state.labelPurgePreview && state.labelPurgePreview.purgeable
+            ? state.labelPurgePreview.purgeable
+            : 0;
         enabled.checked = Boolean(state.enforcementEnabled);
         enabled.disabled = !state.isAdmin;
+        purgeLabelsButton.hidden = !state.isAdmin;
+        purgeLabelsButton.disabled = !state.isAdmin || purgeable === 0;
+        purgeLabelsButton.textContent =
+          purgeable > 0
+            ? "Purge " + purgeable + " legacy label" + (purgeable === 1 ? "" : "s")
+            : "No legacy labels to purge";
 
         if (!state.isAdmin) {
           setStatus("Only Trello workspace admins can change this.", "error");
           return;
         }
 
+        var statusText = state.enforcementEnabled
+          ? state.webhookActive
+            ? "Webhook active."
+            : "Enforcement is on, but the webhook is not active."
+          : "Enforcement is off.";
+
+        if (purgeable > 0) {
+          statusText +=
+            " " +
+            purgeable +
+            " legacy label" +
+            (purgeable === 1 ? " is" : "s are") +
+            " ready to purge.";
+        }
+
         setStatus(
-          state.enforcementEnabled
-            ? state.webhookActive
-              ? "Webhook active."
-              : "Enforcement is on, but the webhook is not active."
-            : "Enforcement is off.",
+          statusText,
           state.enforcementEnabled && state.webhookActive ? "success" : ""
         );
       }
@@ -172,9 +205,58 @@
         }
       }
 
+      async function purgeLegacyLabels(event) {
+        var button = event.currentTarget;
+        var originalText = button.textContent;
+
+        if (
+          !window.confirm(
+            "Delete every Trello label on this board that is not tracked as a project or department label?"
+          )
+        ) {
+          return;
+        }
+
+        try {
+          button.disabled = true;
+          button.textContent = "Purging...";
+          setStatus("Purging legacy labels. This may take a bit...");
+
+          var result = await apiRequest(
+            "/api/permission-manager-enforcer/labels/purge-legacy",
+            {
+              trelloMemberId: memberId,
+              trelloBoardId: boardId,
+            }
+          );
+          var purge = result.labelPurge;
+
+          setStatus(
+            "Deleted " +
+              purge.deleted +
+              " legacy label" +
+              (purge.deleted === 1 ? "" : "s") +
+              (purge.failed > 0 ? "; " + purge.failed + " failed." : "."),
+            purge.failed > 0 ? "error" : "success"
+          );
+          button.disabled = purge.failed === 0;
+          button.textContent =
+            purge.failed > 0
+              ? "Retry failed label purge"
+              : "No legacy labels to purge";
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = originalText;
+          setStatus(error.message || error, "error");
+        }
+      }
+
       document
         .getElementById("enabled")
         .addEventListener("change", toggleEnforcement);
+      document
+        .getElementById("purgeLabelsButton")
+        .addEventListener("click", purgeLegacyLabels);
       document.getElementById("closeButton").addEventListener("click", function () {
         t.closeModal();
       });

@@ -126,15 +126,6 @@
         margin-top: 4px;
       }
 
-      .role {
-        background: var(--soft);
-        border-radius: 999px;
-        color: var(--muted);
-        flex: 0 0 auto;
-        font-size: 12px;
-        padding: 4px 8px;
-      }
-
       .toolbar {
         display: flex;
         flex-wrap: wrap;
@@ -163,16 +154,19 @@
       }
 
       .grid {
+        align-items: start;
         display: grid;
         gap: 12px;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       }
 
       .panel {
+        align-self: start;
         border: 1px solid var(--border);
         border-radius: 8px;
         display: grid;
         gap: 12px;
+        max-height: calc(100vh - 150px);
         padding: 12px;
       }
 
@@ -184,8 +178,11 @@
       }
 
       .entity-list {
+        align-content: start;
         display: grid;
         gap: 8px;
+        max-height: calc(100vh - 220px);
+        overflow: auto;
       }
 
       .entity {
@@ -206,6 +203,35 @@
 
       .entity-title h3 {
         overflow-wrap: anywhere;
+      }
+
+      .entity-name-button {
+        background: transparent;
+        border-radius: 3px;
+        color: inherit;
+        display: inline;
+        font-size: inherit;
+        font-weight: inherit;
+        justify-content: start;
+        line-height: 1.25;
+        min-height: 0;
+        padding: 0;
+        text-align: left;
+        white-space: normal;
+      }
+
+      .entity-name-button:hover,
+      .entity-name-button:focus {
+        background: var(--soft);
+        box-shadow: 0 0 0 2px var(--soft);
+        outline: 0;
+      }
+
+      .inline-name-input {
+        font-size: 14px;
+        font-weight: 700;
+        min-height: 28px;
+        padding: 4px 6px;
       }
 
       .meta {
@@ -322,7 +348,6 @@
           <h1>Project Configurator</h1>
           <p class="status" id="status">Loading project configuration...</p>
         </div>
-        <span class="role" id="role">Loading</span>
       </header>
       <nav class="toolbar" id="toolbar"></nav>
       <section id="message"></section>
@@ -383,10 +408,7 @@
         pink_dark: "#ae4787",
         black_dark: "#626f86",
       };
-      var roleLabels = {
-        admin: "Workspace admin",
-        normal_user: "Workspace member",
-      };
+      var inlineEdit = null;
 
       function escapeHtml(value) {
         return String(value)
@@ -452,17 +474,17 @@
 
       function entityHtml(entity, kind) {
         var color = kind === "project" ? entity.projectColor : entity.departmentColor;
-        var label = kind === "project" ? "Project label" : "Department label";
         return (
           '<article class="entity">' +
           renderSwatch(color) +
           '<div class="entity-title"><h3>' +
+          '<button type="button" class="entity-name-button" title="Rename" data-inline-edit-' +
+          kind +
+          '="' +
+          escapeHtml(entity.id) +
+          '">' +
           escapeHtml(entity.name) +
-          '</h3><p class="meta">' +
-          label +
-          ": " +
-          escapeHtml(entity.labelText) +
-          "</p></div>" +
+          "</button></h3></div>" +
           '<div class="row-actions">' +
           '<button type="button" class="secondary" title="Edit" aria-label="Edit ' +
           escapeHtml(entity.name) +
@@ -484,8 +506,6 @@
 
       function renderState(state) {
         currentState = state;
-        document.getElementById("role").textContent =
-          roleLabels[state.viewer.role] || state.viewer.role;
         document.getElementById("status").textContent =
           state.projects.length +
           " projects and " +
@@ -540,6 +560,103 @@
             deleteEntity("department", button.getAttribute("data-delete-department"));
           };
         });
+        document.querySelectorAll("button[data-inline-edit-project]").forEach(function (button) {
+          button.onclick = function () {
+            startInlineEdit("project", button.getAttribute("data-inline-edit-project"), button);
+          };
+        });
+        document.querySelectorAll("button[data-inline-edit-department]").forEach(function (button) {
+          button.onclick = function () {
+            startInlineEdit("department", button.getAttribute("data-inline-edit-department"), button);
+          };
+        });
+      }
+
+      function startInlineEdit(kind, id, button) {
+        if (inlineEdit) {
+          inlineEdit.input.blur();
+          return;
+        }
+
+        var items = kind === "project" ? currentState.projects : currentState.departments;
+        var entity = items.find(function (item) { return item.id === id; });
+
+        if (!entity) {
+          return;
+        }
+
+        var input = document.createElement("input");
+        input.className = "inline-name-input";
+        input.maxLength = 160;
+        input.required = true;
+        input.value = entity.name;
+        inlineEdit = {
+          cancelled: false,
+          entity: entity,
+          input: input,
+          kind: kind,
+          originalName: entity.name,
+        };
+
+        button.replaceWith(input);
+        input.focus();
+        input.select();
+
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            inlineEdit.cancelled = true;
+            finishInlineEdit(false);
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            input.blur();
+          }
+        });
+        input.addEventListener("blur", function () {
+          if (inlineEdit && inlineEdit.input === input) {
+            finishInlineEdit(!inlineEdit.cancelled);
+          }
+        });
+      }
+
+      async function finishInlineEdit(shouldSave) {
+        var edit = inlineEdit;
+        inlineEdit = null;
+
+        if (!edit) {
+          return;
+        }
+
+        var name = String(edit.input.value || "").trim();
+
+        if (!shouldSave || name === edit.originalName) {
+          await loadState();
+          return;
+        }
+
+        if (!name) {
+          showMessage("Name is required.", "error");
+          await loadState();
+          return;
+        }
+
+        try {
+          ensureUniqueName(edit.kind, name, edit.entity.id);
+          await apiRequest(
+            "/api/project-configurator/" +
+              (edit.kind === "project" ? "projects" : "departments") +
+              "/" +
+              encodeURIComponent(edit.entity.id) +
+              "/name",
+            { name: name },
+            "PATCH"
+          );
+          await loadState();
+          showMessage((edit.kind === "project" ? "Project" : "Department") + " renamed.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+          await loadState();
+        }
       }
 
       function openEditor(action, id) {

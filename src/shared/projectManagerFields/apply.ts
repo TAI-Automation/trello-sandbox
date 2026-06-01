@@ -2,6 +2,7 @@ import {
   listActiveProjects,
   listBoardProjectLabels,
   type ProjectSummary,
+  type ProjectManagerSummary,
 } from "../../projectConfigurator/repository.js";
 import { getTrelloCredentials } from "../../projectConfigurator/permissions.js";
 import {
@@ -90,9 +91,13 @@ async function applyProjectManagerFields(
   job.totalCards = cards.length;
 
   for (const card of cards) {
-    const project = findCardProject(card, projectById, projectIdByLabelId);
+    const projectManagers = findCardProjectManagers(
+      card,
+      projectById,
+      projectIdByLabelId
+    );
 
-    if (!project) {
+    if (!projectManagers) {
       job.skipped += 1;
       continue;
     }
@@ -100,7 +105,7 @@ async function applyProjectManagerFields(
     job.matchedCards += 1;
 
     try {
-      const value = formatProjectManagers(project.projectManagers);
+      const value = formatProjectManagers(projectManagers);
 
       await retryRateLimited(async () => {
         if (value) {
@@ -149,7 +154,7 @@ export async function applyProjectManagerFieldToCard(input: {
     listActiveProjects(),
     listBoardProjectLabels(input.boardId),
   ]);
-  const project = findCardProject(
+  const projectManagers = findCardProjectManagers(
     input.card,
     new Map(projects.map((item) => [item.id, item])),
     new Map(
@@ -159,11 +164,11 @@ export async function applyProjectManagerFieldToCard(input: {
     )
   );
 
-  if (!project) {
+  if (!projectManagers) {
     return false;
   }
 
-  const value = formatProjectManagers(project.projectManagers);
+  const value = formatProjectManagers(projectManagers);
 
   if (value) {
     await setTrelloCardTextCustomField(
@@ -187,21 +192,36 @@ export async function applyProjectManagerFieldToCard(input: {
   return true;
 }
 
-function findCardProject(
+function findCardProjectManagers(
   card: TrelloCard,
   projectById: Map<string, ProjectSummary>,
   projectIdByLabelId: Map<string, string>
-): ProjectSummary | null {
+): ProjectManagerSummary[] | null {
+  const managers: ProjectManagerSummary[] = [];
+  const seenMemberIds = new Set<string>();
+  let hasProject = false;
+
   for (const labelId of card.idLabels) {
     const projectId = projectIdByLabelId.get(labelId);
     const project = projectId ? projectById.get(projectId) : undefined;
 
-    if (project) {
-      return project;
+    if (!project) {
+      continue;
+    }
+
+    hasProject = true;
+
+    for (const manager of project.projectManagers) {
+      if (seenMemberIds.has(manager.trelloMemberId)) {
+        continue;
+      }
+
+      seenMemberIds.add(manager.trelloMemberId);
+      managers.push(manager);
     }
   }
 
-  return null;
+  return hasProject ? managers : null;
 }
 
 async function retryRateLimited(action: () => Promise<void>): Promise<void> {

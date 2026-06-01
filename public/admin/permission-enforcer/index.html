@@ -338,6 +338,17 @@
         <section id="message"></section>
 
         <section class="panel">
+          <h2>Project managers</h2>
+          <form class="toolbar" id="projectManagerCapForm">
+            <label>
+              Max project managers per project
+              <input name="projectManagerCap" min="1" max="25" required type="number" />
+            </label>
+            <button type="submit">Save</button>
+          </form>
+        </section>
+
+        <section class="panel">
           <h2>Label priorities</h2>
           <div class="toolbar">
             <p class="meta">
@@ -372,6 +383,7 @@
 
     <script>
       var boards = [];
+      var settings = { projectManagerCap: 3 };
 
       function escapeHtml(value) {
         return String(value)
@@ -412,6 +424,8 @@
 
       function renderBoards() {
         var target = document.getElementById("boards");
+        document.querySelector("#projectManagerCapForm input").value =
+          settings.projectManagerCap || 3;
         document.getElementById("summary").textContent =
           boards.length + " managed board" + (boards.length === 1 ? "" : "s");
 
@@ -498,6 +512,7 @@
       async function loadState() {
         var state = await apiRequest("/api/enforcement-dashboard/state");
         boards = state.boards || [];
+        settings = state.settings || { projectManagerCap: 3 };
         showDashboard();
         renderBoards();
       }
@@ -599,6 +614,33 @@
         }
       }
 
+      async function saveProjectManagerCap(event) {
+        event.preventDefault();
+        showMessage("", false);
+
+        var form = event.currentTarget;
+        var button = form.querySelector("button");
+        var cap = Number(new FormData(form).get("projectManagerCap"));
+
+        try {
+          button.disabled = true;
+          var result = await apiRequest(
+            "/api/enforcement-dashboard/settings/project-manager-cap",
+            {
+              method: "PATCH",
+              body: JSON.stringify({ projectManagerCap: cap }),
+            }
+          );
+          settings = result.settings || settings;
+          renderBoards();
+          showMessage("Project manager cap saved.", false);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
       async function updateEnforcement(input) {
         showMessage("", false);
         input.disabled = true;
@@ -656,6 +698,9 @@
       document
         .getElementById("cleanupLabelPrioritiesButton")
         .addEventListener("click", cleanupLabelPriorities);
+      document
+        .getElementById("projectManagerCapForm")
+        .addEventListener("submit", saveProjectManagerCap);
 
       fetch("/api/enforcement-dashboard/session")
         .then(function (response) {

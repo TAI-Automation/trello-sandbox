@@ -87,6 +87,7 @@
         <input type="checkbox" id="enabled" disabled />
       </label>
       <div class="status" id="status">Loading enforcement state...</div>
+      <div class="status" id="settingsStatus"></div>
       <button type="button" class="danger" id="purgeLabelsButton" hidden>
         Purge legacy labels
       </button>
@@ -124,6 +125,10 @@
       function render(state) {
         var enabled = document.getElementById("enabled");
         var purgeLabelsButton = document.getElementById("purgeLabelsButton");
+        document.getElementById("settingsStatus").textContent =
+          state.settings && state.settings.projectManagerCap
+            ? "Project manager cap: " + state.settings.projectManagerCap
+            : "";
         var purgeable =
           state.labelPurgePreview && state.labelPurgePreview.purgeable
             ? state.labelPurgePreview.purgeable

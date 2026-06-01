@@ -1,7 +1,10 @@
 import type pg from "pg";
 
 import { getDbPool } from "../db/client.js";
-import type { TrelloBoardRecord } from "../db/repositories/trelloBoards.js";
+import type {
+  AppSettings,
+  TrelloBoardRecord,
+} from "../db/repositories/trelloBoards.js";
 
 type TrelloBoardRow = {
   trello_board_id: string;
@@ -14,6 +17,11 @@ type TrelloBoardRow = {
   last_error: string | null;
   created_at: Date;
   updated_at: Date;
+};
+
+type AppSettingRow = {
+  key: string;
+  value: string;
 };
 
 function db(client?: pg.PoolClient): pg.Pool | pg.PoolClient {
@@ -38,6 +46,39 @@ export async function listDashboardBoards(): Promise<TrelloBoardRecord[]> {
   `);
 
   return result.rows.map(mapTrelloBoard);
+}
+
+export async function getAppSettings(): Promise<AppSettings> {
+  const result = await getDbPool().query<AppSettingRow>(
+    "select key, value from app_settings where key = 'project_manager_cap'"
+  );
+  const value = result.rows[0]?.value;
+  const parsed = value ? Number(value) : 3;
+
+  return {
+    projectManagerCap: Number.isInteger(parsed) && parsed > 0 ? parsed : 3,
+  };
+}
+
+export async function updateProjectManagerCap(
+  projectManagerCap: number
+): Promise<AppSettings> {
+  const result = await getDbPool().query<AppSettingRow>(
+    `
+      insert into app_settings (key, value, updated_at)
+      values ('project_manager_cap', $1, now())
+      on conflict (key) do update
+      set value = excluded.value,
+          updated_at = now()
+      returning key, value
+    `,
+    [String(projectManagerCap)]
+  );
+  const parsed = Number(requireRow(result.rows[0], "Setting was not saved.").value);
+
+  return {
+    projectManagerCap: parsed,
+  };
 }
 
 export async function getDashboardBoard(

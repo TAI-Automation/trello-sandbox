@@ -8,6 +8,8 @@ import {
   type BoardDepartmentLabelSummary,
   type BoardProjectLabelSummary,
 } from "../projectConfigurator/repository.js";
+import { findProjectManagerCustomField } from "../shared/projectManagerFields/customField.js";
+import { applyProjectManagerFieldToCard } from "../shared/projectManagerFields/apply.js";
 import {
   getOrganizationId,
   getTrelloCredentials,
@@ -39,6 +41,10 @@ type ActionData = {
   boardSource?: TrelloRef;
   boardTarget?: TrelloRef;
   card?: TrelloCardRef;
+  customField?: TrelloRef;
+  customFieldItem?: {
+    idCustomField?: string;
+  };
   listBefore?: TrelloRef;
   label?: TrelloLabelRef;
   old?: Record<string, unknown>;
@@ -121,6 +127,9 @@ export async function enforceTrelloWebhook(payload: unknown): Promise<void> {
     case "updateCard":
       await enforceCardMoveIfNeeded(action, actorMemberId, boardId);
       break;
+    case "updateCustomFieldItem":
+      await enforceProjectManagerCustomField(action, actorMemberId, boardId);
+      break;
     case "updateLabel":
       await enforceUpdateLabel(action, boardId);
       break;
@@ -128,6 +137,63 @@ export async function enforceTrelloWebhook(payload: unknown): Promise<void> {
       await enforceDeleteLabel(action, boardId);
       break;
   }
+}
+
+async function enforceProjectManagerCustomField(
+  action: TrelloAction,
+  actorMemberId: string,
+  boardId: string
+): Promise<void> {
+  const cardId = action.data?.card?.id;
+
+  if (!cardId) {
+    return;
+  }
+
+  const isAdmin = await isTrelloWorkspaceAdmin(
+    getOrganizationId(),
+    actorMemberId,
+    getTrelloCredentials()
+  );
+
+  if (isAdmin) {
+    console.log("permission-manager-enforcer pm field bypassed", {
+      boardId,
+      cardId,
+      actorMemberId,
+      reason: "admin",
+    });
+    return;
+  }
+
+  const customFieldId =
+    action.data?.customField?.id ?? action.data?.customFieldItem?.idCustomField;
+
+  if (!customFieldId) {
+    return;
+  }
+
+  const customField = await findProjectManagerCustomField(
+    boardId,
+    getTrelloCredentials()
+  );
+
+  if (!customField || customField.id !== customFieldId) {
+    return;
+  }
+
+  const card = await fetchTrelloCard(cardId, getTrelloCredentials());
+  const applied = await applyProjectManagerFieldToCard({
+    boardId,
+    card,
+  });
+
+  console.log("permission-manager-enforcer pm field checked", {
+    boardId,
+    cardId,
+    actorMemberId,
+    applied,
+  });
 }
 
 async function enforceCardMoveIfNeeded(

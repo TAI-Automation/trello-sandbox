@@ -16,6 +16,14 @@ export type ProjectSummary = {
   labelText: string;
   projectColor: string;
   departmentId: string;
+  projectManagers: ProjectManagerSummary[];
+};
+
+export type ProjectManagerSummary = {
+  trelloMemberId: string;
+  displayName: string;
+  username: string | null;
+  sortOrder: number;
 };
 
 export type ManagedBoardSummary = {
@@ -54,6 +62,14 @@ type ProjectRow = {
   id: string;
   name: string;
   project_color: string;
+};
+
+type ProjectManagerRow = {
+  project_id: string;
+  trello_member_id: string;
+  display_name: string;
+  username: string | null;
+  sort_order: number;
 };
 
 type ManagedBoardRow = {
@@ -99,14 +115,30 @@ export async function listActiveDepartments(
 export async function listActiveProjects(
   client?: pg.PoolClient
 ): Promise<ProjectSummary[]> {
-  const result = await db(client).query<ProjectRow>(`
-    select id::text, name, project_color
-    from projects
-    where archived_at is null
-    order by name asc
-  `);
+  const projectResult = await db(client).query<ProjectRow>(`
+      select id::text, name, project_color
+      from projects
+      where archived_at is null
+      order by name asc
+    `);
+  const managerResult = await db(client).query<ProjectManagerRow>(`
+      select
+        pm.project_id::text,
+        pm.trello_member_id,
+        m.display_name,
+        m.username,
+        pm.sort_order
+      from project_managers pm
+      join members m on m.trello_member_id = pm.trello_member_id
+      join projects p on p.id = pm.project_id
+      where p.archived_at is null
+      order by pm.project_id asc, pm.sort_order asc, m.display_name asc
+    `);
+  const managersByProjectId = groupProjectManagers(managerResult.rows);
 
-  return result.rows.map(mapProject);
+  return projectResult.rows.map((row) =>
+    mapProject(row, managersByProjectId.get(row.id) ?? [])
+  );
 }
 
 export async function listLabelSyncBoards(
@@ -251,17 +283,65 @@ export async function deleteDepartment(departmentId: string): Promise<boolean> {
 export async function createProject(input: {
   name: string;
   projectColor: string;
+  projectManagerMemberIds?: string[];
 }): Promise<ProjectSummary> {
-  const result = await getDbPool().query<ProjectRow>(
-    `
-      insert into projects (name, project_color)
-      values ($1, $2)
-      returning id::text, name, project_color
-    `,
-    [input.name, input.projectColor]
-  );
+  const client = await getDbPool().connect();
 
-  return mapProject(requireRow(result.rows[0], "Project was not created."));
+  try {
+    await client.query("begin");
+    const result = await client.query<ProjectRow>(
+      `
+        insert into projects (name, project_color)
+        values ($1, $2)
+        returning id::text, name, project_color
+      `,
+      [input.name, input.projectColor]
+    );
+    const project = mapProject(
+      requireRow(result.rows[0], "Project was not created.")
+    );
+
+    if (input.projectManagerMemberIds?.length) {
+      await replaceProjectManagers(
+        {
+          projectId: project.id,
+          trelloMemberIds: input.projectManagerMemberIds,
+        },
+        client
+      );
+    }
+
+    await client.query("commit");
+
+    return (await getProject(project.id)) ?? project;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function getProject(
+  projectId: string,
+  client?: pg.PoolClient
+): Promise<ProjectSummary | null> {
+  const result = await db(client).query<ProjectRow>(
+    `
+      select id::text, name, project_color
+      from projects
+      where id = $1
+        and archived_at is null
+    `,
+    [projectId]
+  );
+  const row = result.rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  return mapProject(row, await listProjectManagers(projectId, client));
 }
 
 export async function updateProjectName(input: {
@@ -309,6 +389,9 @@ export async function deleteProject(projectId: string): Promise<boolean> {
 
   try {
     await client.query("begin");
+    await client.query("delete from project_managers where project_id = $1", [
+      projectId,
+    ]);
     await client.query(
       "delete from board_project_labels where project_id = $1",
       [projectId]
@@ -330,6 +413,106 @@ export async function deleteProject(projectId: string): Promise<boolean> {
   } finally {
     client.release();
   }
+}
+
+export async function listProjectManagers(
+  projectId: string,
+  client?: pg.PoolClient
+): Promise<ProjectManagerSummary[]> {
+  const result = await db(client).query<ProjectManagerRow>(
+    `
+      select
+        pm.project_id::text,
+        pm.trello_member_id,
+        m.display_name,
+        m.username,
+        pm.sort_order
+      from project_managers pm
+      join members m on m.trello_member_id = pm.trello_member_id
+      where pm.project_id = $1
+      order by pm.sort_order asc, m.display_name asc
+    `,
+    [projectId]
+  );
+
+  return result.rows.map(mapProjectManager);
+}
+
+export async function addProjectManager(input: {
+  projectId: string;
+  trelloMemberId: string;
+}): Promise<ProjectSummary | null> {
+  await getDbPool().query(
+    `
+      insert into project_managers (project_id, trello_member_id, sort_order)
+      values (
+        $1,
+        $2,
+        coalesce(
+          (select max(sort_order) + 1 from project_managers where project_id = $1),
+          0
+        )
+      )
+      on conflict (project_id, trello_member_id) do nothing
+    `,
+    [input.projectId, input.trelloMemberId]
+  );
+
+  return getProject(input.projectId);
+}
+
+export async function removeProjectManager(input: {
+  projectId: string;
+  trelloMemberId: string;
+}): Promise<ProjectSummary | null> {
+  await getDbPool().query(
+    `
+      delete from project_managers
+      where project_id = $1
+        and trello_member_id = $2
+    `,
+    [input.projectId, input.trelloMemberId]
+  );
+
+  return getProject(input.projectId);
+}
+
+export async function replaceProjectManagers(
+  input: {
+    projectId: string;
+    trelloMemberIds: string[];
+  },
+  client?: pg.PoolClient
+): Promise<void> {
+  const target = db(client);
+
+  await target.query("delete from project_managers where project_id = $1", [
+    input.projectId,
+  ]);
+
+  if (input.trelloMemberIds.length === 0) {
+    return;
+  }
+
+  await target.query(
+    `
+      insert into project_managers (project_id, trello_member_id, sort_order)
+      select $1, item.trello_member_id, item.sort_order
+      from jsonb_to_recordset($2::jsonb) as item(
+        trello_member_id text,
+        sort_order integer
+      )
+    `,
+    [
+      input.projectId,
+      JSON.stringify(
+        input.trelloMemberIds.map((trelloMemberId, index) => ({
+          trello_member_id: trelloMemberId,
+          sort_order: index,
+        }))
+      ),
+    ]
+  );
 }
 
 export async function listBoardProjectLabels(
@@ -606,13 +789,41 @@ function mapDepartment(row: DepartmentRow): DepartmentSummary {
   };
 }
 
-function mapProject(row: ProjectRow): ProjectSummary {
+function mapProject(
+  row: ProjectRow,
+  projectManagers: ProjectManagerSummary[] = []
+): ProjectSummary {
   return {
     id: row.id,
     name: row.name,
     labelText: row.name,
     projectColor: row.project_color,
     departmentId: "",
+    projectManagers,
+  };
+}
+
+function groupProjectManagers(
+  rows: ProjectManagerRow[]
+): Map<string, ProjectManagerSummary[]> {
+  const managersByProjectId = new Map<string, ProjectManagerSummary[]>();
+
+  for (const row of rows) {
+    const managers = managersByProjectId.get(row.project_id) ?? [];
+
+    managers.push(mapProjectManager(row));
+    managersByProjectId.set(row.project_id, managers);
+  }
+
+  return managersByProjectId;
+}
+
+function mapProjectManager(row: ProjectManagerRow): ProjectManagerSummary {
+  return {
+    trelloMemberId: row.trello_member_id,
+    displayName: row.display_name,
+    username: row.username,
+    sortOrder: row.sort_order,
   };
 }
 

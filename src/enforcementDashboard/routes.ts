@@ -9,10 +9,12 @@ import {
 } from "./auth.js";
 import {
   getDashboardBoard,
+  getAppSettings,
   listDashboardBoards,
   markBoardLabelSyncComplete,
   removeDashboardBoard,
   saveBoardError,
+  updateProjectManagerCap,
   upsertDashboardBoard,
 } from "./repository.js";
 import { syncProjectLabelsForBoard } from "../projectConfigurator/labelSync.js";
@@ -66,8 +68,31 @@ enforcementDashboardRouter.get(
   async (_req, res, next) => {
     try {
       const boards = await listDashboardBoards();
+      const settings = await getAppSettings();
 
-      res.json({ boards });
+      res.json({ boards, settings });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+enforcementDashboardRouter.patch(
+  "/api/enforcement-dashboard/settings/project-manager-cap",
+  requireAdminAuth,
+  async (req, res, next) => {
+    try {
+      const projectManagerCap = readRequiredInteger(req.body, "projectManagerCap");
+
+      if (projectManagerCap < 1 || projectManagerCap > 25) {
+        throw new BadRequestError(
+          "projectManagerCap must be between 1 and 25."
+        );
+      }
+
+      res.json({
+        settings: await updateProjectManagerCap(projectManagerCap),
+      });
     } catch (error) {
       next(error);
     }
@@ -229,6 +254,20 @@ function readRequiredBoolean(body: unknown, key: string): boolean {
 
   if (typeof value !== "boolean") {
     throw new BadRequestError(`${key} must be a boolean.`);
+  }
+
+  return value;
+}
+
+function readRequiredInteger(body: unknown, key: string): number {
+  if (!body || typeof body !== "object" || !(key in body)) {
+    throw new BadRequestError(`${key} is required.`);
+  }
+
+  const value = (body as Record<string, unknown>)[key];
+
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new BadRequestError(`${key} must be an integer.`);
   }
 
   return value;

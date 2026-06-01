@@ -11,22 +11,17 @@ import {
   resolveProjectConfiguratorViewer,
   type ProjectConfiguratorViewer,
 } from "../projectConfigurator/permissions.js";
+import { ensureProjectManagerCustomField } from "../shared/projectManagerFields/customField.js";
+import { formatProjectManagers } from "../shared/projectManagerFields/format.js";
 import {
-  createTrelloBoardTextCustomField,
   createTrelloCard,
-  fetchTrelloBoardMembers,
   fetchTrelloBoardLists,
-  listTrelloBoardCustomFields,
   setTrelloCardTextCustomField,
   type TrelloCard,
-  type TrelloCredentials,
-  type TrelloCustomField,
   type TrelloList,
 } from "../trello/api.js";
 
 export const createCardRouter = express.Router();
-
-const CREATED_BY_CUSTOM_FIELD_NAME = "Created By";
 
 type CreateCardProject = ProjectSummary & {
   trelloLabelId: string;
@@ -88,10 +83,10 @@ createCardRouter.post("/api/create-card/cards", async (req, res, next) => {
     }
 
     const credentials = getTrelloCredentials();
-    const [createdByCustomField, createdByName] = await Promise.all([
-      ensureCreatedByCustomField(trelloBoardId, credentials),
-      resolveCreatedByName(trelloBoardId, trelloMemberId, credentials),
-    ]);
+    const projectManagerValue = formatProjectManagers(project.projectManagers);
+    const projectManagerCustomField = projectManagerValue
+      ? await ensureProjectManagerCustomField(trelloBoardId, credentials)
+      : null;
 
     const card = await createTrelloCard(
       {
@@ -102,14 +97,16 @@ createCardRouter.post("/api/create-card/cards", async (req, res, next) => {
       credentials
     );
 
-    await setTrelloCardTextCustomField(
-      {
-        cardId: card.id,
-        customFieldId: createdByCustomField.id,
-        value: createdByName,
-      },
-      credentials
-    );
+    if (projectManagerCustomField && projectManagerValue) {
+      await setTrelloCardTextCustomField(
+        {
+          cardId: card.id,
+          customFieldId: projectManagerCustomField.id,
+          value: projectManagerValue,
+        },
+        credentials
+      );
+    }
 
     res.status(201).json({
       card: mapCreatedCard(card),
@@ -147,54 +144,6 @@ async function getCreateCardState(input: {
     projects: syncedProjects,
     lists,
   };
-}
-
-async function ensureCreatedByCustomField(
-  boardId: string,
-  credentials: TrelloCredentials
-): Promise<TrelloCustomField> {
-  const customFields = await listTrelloBoardCustomFields(boardId, credentials);
-  const existingField = customFields.find(
-    (customField) =>
-      customField.name.toLowerCase() ===
-      CREATED_BY_CUSTOM_FIELD_NAME.toLowerCase()
-  );
-
-  if (!existingField) {
-    return createTrelloBoardTextCustomField(
-      {
-        boardId,
-        name: CREATED_BY_CUSTOM_FIELD_NAME,
-      },
-      credentials
-    );
-  }
-
-  if (existingField.type !== "text") {
-    throw new BadRequestError(
-      `The board already has a "${CREATED_BY_CUSTOM_FIELD_NAME}" custom field, but it is not a text field.`
-    );
-  }
-
-  return existingField;
-}
-
-async function resolveCreatedByName(
-  boardId: string,
-  trelloMemberId: string,
-  credentials: TrelloCredentials
-): Promise<string> {
-  const members = await fetchTrelloBoardMembers(boardId, credentials);
-  const member = members.find((item) => item.id === trelloMemberId);
-  const fullName = member?.fullName?.trim();
-
-  if (!fullName) {
-    throw new BadRequestError(
-      "Could not determine the current Trello member's full name."
-    );
-  }
-
-  return fullName;
 }
 
 function mapCreateCardProject(

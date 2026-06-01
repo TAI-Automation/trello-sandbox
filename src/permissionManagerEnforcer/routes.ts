@@ -1,6 +1,9 @@
 import express from "express";
 
-import { getDashboardBoard } from "../enforcementDashboard/repository.js";
+import {
+  getAppSettings,
+  getDashboardBoard,
+} from "../enforcementDashboard/repository.js";
 import { setBoardEnforcementState } from "../enforcementDashboard/webhookState.js";
 import { listBoardProjectLabels } from "../projectConfigurator/repository.js";
 import {
@@ -96,6 +99,7 @@ permissionManagerEnforcerRouter.post(
         getTrelloCredentials()
       );
       const board = await getDashboardBoard(trelloBoardId);
+      const settings = isAdmin ? await getAppSettings() : null;
       const labelPurgePreview = isAdmin
         ? await previewLegacyLabelPurge(trelloBoardId)
         : null;
@@ -105,6 +109,7 @@ permissionManagerEnforcerRouter.post(
         enforcementEnabled: board?.enforcementEnabled ?? false,
         webhookActive: board?.webhookActive ?? false,
         lastError: board?.lastError ?? null,
+        settings,
         labelPurgePreview,
       });
     } catch (error) {

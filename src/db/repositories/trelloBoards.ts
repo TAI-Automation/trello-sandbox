@@ -10,3 +10,7 @@ export type TrelloBoardRecord = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type AppSettings = {
+  projectManagerCap: number;
+};

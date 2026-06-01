@@ -15,6 +15,8 @@ export type ProjectConfiguratorCapabilities = {
   canEditDepartments: boolean;
   canEditProjects: boolean;
   canSynchronizeLabels: boolean;
+  canEditProjectManagers: boolean;
+  canApplyProjectManagerFields: boolean;
 };
 
 export function getOrganizationId(): string {
@@ -55,10 +57,16 @@ export async function resolveProjectConfiguratorViewer(
   };
 }
 
-export function resolveCapabilities(): ProjectConfiguratorCapabilities {
+export function resolveCapabilities(
+  viewer: ProjectConfiguratorViewer
+): ProjectConfiguratorCapabilities {
+  const isAdmin = viewer.role === "admin";
+
   return {
     canEditDepartments: true,
     canEditProjects: true,
     canSynchronizeLabels: true,
+    canEditProjectManagers: isAdmin,
+    canApplyProjectManagerFields: isAdmin,
   };
 }

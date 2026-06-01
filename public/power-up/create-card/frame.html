@@ -147,6 +147,12 @@
         border-color: var(--success-border);
         color: var(--success);
       }
+
+      .project-managers {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
     </style>
   </head>
   <body>
@@ -171,6 +177,7 @@
             <select name="listId" required></select>
           </label>
         </div>
+        <p class="project-managers" id="projectManagers"></p>
         <div class="actions">
           <button type="submit" id="submitButton">Create</button>
           <button type="button" class="secondary" id="closeButton">Close</button>
@@ -235,8 +242,26 @@
           .join("");
 
         updateSubmitState();
+        updateProjectManagerPreview();
         form.hidden = false;
         setStatus(currentState.projects.length + " synced projects available");
+      }
+
+      function updateProjectManagerPreview() {
+        var form = document.getElementById("createCardForm");
+        var projectId = String(form.elements.projectId.value || "");
+        var project = currentState.projects.find(function (item) {
+          return item.id === projectId;
+        });
+        var managers = project && project.projectManagers ? project.projectManagers : [];
+        document.getElementById("projectManagers").textContent = managers.length
+          ? "Project Manager(s): " +
+            managers
+              .map(function (manager) {
+                return manager.displayName;
+              })
+              .join(", ")
+          : "No project managers configured for this project.";
       }
 
       function updateSubmitState() {
@@ -247,6 +272,7 @@
           !String(form.elements.name.value || "").trim() ||
           !String(form.elements.projectId.value || "") ||
           !String(form.elements.listId.value || "");
+        updateProjectManagerPreview();
       }
 
       async function apiRequest(url, body) {

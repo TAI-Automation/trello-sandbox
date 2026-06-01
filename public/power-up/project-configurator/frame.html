@@ -1063,22 +1063,62 @@
         try {
           button.disabled = true;
           button.textContent = "Applying...";
-          var result = await apiRequest("/api/project-configurator/project-manager-fields/apply", {
+          await apiRequest("/api/project-configurator/project-manager-fields/apply", {
             trelloBoardId: currentBoardId,
           });
-          var apply = result.apply || {};
-          showMessage(
-            "Applying PM fields in the background. Matched " +
-              (apply.matchedCards || 0) +
-              " card(s) so far.",
-            "success"
-          );
+          await pollPmFieldApply(button);
         } catch (error) {
           showMessage(error.message || error, "error");
-        } finally {
           button.disabled = false;
           button.textContent = "Apply PM Fields";
         }
+      }
+
+      async function pollPmFieldApply(button) {
+        var result = await apiRequest(
+          "/api/project-configurator/project-manager-fields/apply/status",
+          { trelloBoardId: currentBoardId }
+        );
+        var apply = result.apply || {};
+        var processed =
+          (apply.updated || 0) + (apply.unchanged || 0) + (apply.failed || 0);
+        var text = apply.totalCards
+          ? "Applying PM fields: " +
+            processed +
+            " of " +
+            (apply.matchedCards || 0) +
+            " matching card(s) processed" +
+            ((apply.unchanged || 0) > 0
+              ? ", " + apply.unchanged + " already correct"
+              : "") +
+            ((apply.failed || 0) > 0 ? ", " + apply.failed + " failed" : "") +
+            "."
+          : "Scanning board cards for project labels...";
+
+        if (!apply.done) {
+          showMessage(text, "success");
+          window.setTimeout(function () {
+            pollPmFieldApply(button).catch(function (error) {
+              showMessage(error.message || error, "error");
+              button.disabled = false;
+              button.textContent = "Apply PM Fields";
+            });
+          }, 1200);
+          return;
+        }
+
+        showMessage(
+          "Applied PM fields to " +
+            (apply.updated || 0) +
+            " card(s); " +
+            (apply.unchanged || 0) +
+            " already correct; " +
+            (apply.skipped || 0) +
+            " skipped.",
+          (apply.failed || 0) > 0 || apply.error ? "error" : "success"
+        );
+        button.disabled = false;
+        button.textContent = "Apply PM Fields";
       }
 
       async function addProjectManager(projectId) {

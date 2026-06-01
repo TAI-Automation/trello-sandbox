@@ -45,6 +45,7 @@ export type TrelloCard = {
   idList: string;
   closed: boolean;
   idLabels: string[];
+  customFieldItems?: TrelloCustomFieldItem[];
   name?: string;
   url?: string;
 };
@@ -335,6 +336,7 @@ export async function listTrelloBoardCards(
   const url = trelloUrl(`/1/boards/${boardId}/cards`, credentials);
   url.searchParams.set("filter", "open");
   url.searchParams.set("fields", "id,idBoard,idList,closed,idLabels,name,url");
+  url.searchParams.set("customFieldItems", "true");
 
   const cards = await fetchTrelloJson<TrelloCard[]>(url);
 
@@ -668,6 +670,12 @@ function normalizeTrelloCard(card: TrelloCard): TrelloCard {
     idList: card.idList,
     closed: Boolean(card.closed),
     idLabels: Array.isArray(card.idLabels) ? card.idLabels : [],
+    customFieldItems: Array.isArray(card.customFieldItems)
+      ? card.customFieldItems.map((item) => ({
+          idCustomField: item.idCustomField,
+          value: item.value,
+        }))
+      : undefined,
     name: card.name,
     url: card.url,
   };

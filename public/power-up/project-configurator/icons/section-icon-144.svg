@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144" role="img" aria-label="Project Configurator">
+  <path d="M54 70 72 45l24 27-24 27z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"/>
+  <circle cx="52" cy="70" r="13" fill="#000"/>
+  <circle cx="72" cy="45" r="13" fill="#000"/>
+  <circle cx="96" cy="72" r="13" fill="#000"/>
+  <circle cx="72" cy="99" r="13" fill="#000"/>
+</svg>

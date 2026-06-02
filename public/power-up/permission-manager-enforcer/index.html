@@ -18,9 +18,17 @@
         );
       }
 
+      function powerUpIconUrl() {
+        return (
+          window.location.origin +
+          "/power-up/permission-manager-enforcer/icons/section-icon-144.svg"
+        );
+      }
+
       function enforcementButton() {
         return {
           text: "Enforcement",
+          icon: powerUpIconUrl(),
           callback: function (t) {
             return t.modal({
               title: "Enforcement",
@@ -94,6 +102,7 @@
         "card-back-section": function (t) {
           return {
             title: "Permission Manager Enforcer",
+            icon: powerUpIconUrl(),
             content: {
               type: "iframe",
               url: t.signUrl("./section.html"),

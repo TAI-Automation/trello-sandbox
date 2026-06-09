@@ -416,6 +416,7 @@
       var currentMemberId = "";
       var currentBoardId = "";
       var currentState = null;
+      var pmFieldApplyStatus = null;
       var t = window.TrelloPowerUp.iframe();
       var colorHex = {
         green: "#4bce97",
@@ -1059,6 +1060,7 @@
 
       async function applyPmFields(button) {
         showMessage("", "");
+        pmFieldApplyStatus = null;
 
         try {
           button.disabled = true;
@@ -1079,21 +1081,13 @@
           "/api/project-configurator/project-manager-fields/apply/status",
           { trelloBoardId: currentBoardId }
         );
-        var apply = result.apply || {};
-        var processed =
-          (apply.updated || 0) + (apply.unchanged || 0) + (apply.failed || 0);
-        var text = apply.totalCards
-          ? "Applying PM fields: " +
-            processed +
-            " of " +
-            (apply.matchedCards || 0) +
-            " matching card(s) processed" +
-            ((apply.unchanged || 0) > 0
-              ? ", " + apply.unchanged + " already correct"
-              : "") +
-            ((apply.failed || 0) > 0 ? ", " + apply.failed + " failed" : "") +
-            "."
-          : "Scanning board cards for project labels...";
+        var apply = result.apply || pmFieldApplyStatus || {};
+
+        if (result.apply) {
+          pmFieldApplyStatus = result.apply;
+        }
+
+        var text = describePmFieldApplyStatus(apply);
 
         if (!apply.done) {
           showMessage(text, "success");
@@ -1119,6 +1113,28 @@
         );
         button.disabled = false;
         button.textContent = "Apply PM Fields";
+      }
+
+      function describePmFieldApplyStatus(apply) {
+        var processed =
+          (apply.updated || 0) + (apply.unchanged || 0) + (apply.failed || 0);
+
+        if (apply.phase === "applying" || apply.totalCards > 0 || apply.matchedCards > 0) {
+          return (
+            "Applying PM fields: " +
+            processed +
+            " of " +
+            (apply.matchedCards || 0) +
+            " matching card(s) processed" +
+            ((apply.unchanged || 0) > 0
+              ? ", " + apply.unchanged + " already correct"
+              : "") +
+            ((apply.failed || 0) > 0 ? ", " + apply.failed + " failed" : "") +
+            "."
+          );
+        }
+
+        return "Scanning board cards for project labels...";
       }
 
       async function addProjectManager(projectId) {

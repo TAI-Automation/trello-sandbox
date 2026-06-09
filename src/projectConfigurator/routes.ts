@@ -248,7 +248,7 @@ projectConfiguratorRouter.post(
       await requireAdmin(trelloMemberId);
 
       res.status(202).json({
-        apply: startProjectManagerFieldApplyJob(trelloBoardId),
+        apply: await startProjectManagerFieldApplyJob(trelloBoardId),
       });
     } catch (error) {
       next(error);
@@ -266,7 +266,7 @@ projectConfiguratorRouter.post(
       await requireAdmin(trelloMemberId);
 
       res.json({
-        apply: getProjectManagerFieldApplyJob(trelloBoardId),
+        apply: await getProjectManagerFieldApplyJob(trelloBoardId),
       });
     } catch (error) {
       next(error);

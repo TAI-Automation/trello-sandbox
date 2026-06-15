@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Label Priority</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --border: #dfe1e6;
+        --brand: #0c66e4;
+        --danger: #ae2e24;
+        --muted: #626f86;
+        --soft: #f1f2f4;
+        --surface: #ffffff;
+        --text: #172b4d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--surface);
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 16px;
+        padding: 18px;
+      }
+
+      header {
+        border-bottom: 1px solid var(--border);
+        display: grid;
+        gap: 4px;
+        padding-bottom: 12px;
+      }
+
+      h1,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      .meta,
+      label {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+      }
+
+      button {
+        align-items: center;
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        justify-content: center;
+        min-height: 36px;
+        padding: 7px 12px;
+      }
+
+      button.secondary {
+        background: var(--soft);
+        color: var(--text);
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      form {
+        display: grid;
+        gap: 18px;
+      }
+
+      .priority-grid {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      .priority-option {
+        align-items: center;
+        background: var(--soft);
+        border: 2px solid transparent;
+        border-radius: 8px;
+        color: var(--text);
+        display: grid;
+        gap: 5px;
+        justify-items: center;
+        min-height: 68px;
+        padding: 8px 6px;
+      }
+
+      .priority-option img {
+        height: 22px;
+        width: 22px;
+      }
+
+      .priority-option span {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .priority-option.blue {
+        background: #e9f2ff;
+        color: #0055cc;
+      }
+
+      .priority-option.green {
+        background: #dcfff1;
+        color: #216e4e;
+      }
+
+      .priority-option.yellow {
+        background: #fff7d6;
+        color: #7f5f01;
+      }
+
+      .priority-option.orange {
+        background: #fff3eb;
+        color: #a54800;
+      }
+
+      .priority-option.red {
+        background: #ffedeb;
+        color: #ae2e24;
+      }
+
+      .priority-option.selected {
+        border-color: var(--brand);
+        box-shadow: 0 0 0 1px var(--brand);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .message {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+        padding: 12px;
+      }
+
+      .message.error {
+        background: #ffebe6;
+        border-color: #ffbdad;
+        color: var(--danger);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Label Priority</h1>
+        <p class="meta" id="status">Loading priority...</p>
+      </header>
+      <section id="message"></section>
+      <form id="priorityForm" hidden>
+        <input type="hidden" name="priority" value="5" />
+        <div class="priority-grid" id="priorityGrid"></div>
+        <div class="actions">
+          <button type="submit" id="saveButton">Save</button>
+          <button type="button" class="danger" id="clearButton">Clear</button>
+        </div>
+      </form>
+    </main>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var t = window.TrelloPowerUp.iframe();
+      var currentMemberId = "";
+      var currentCardId = "";
+      var canModify = false;
+
+      function priorityColor(value) {
+        return value >= 9
+          ? "red"
+          : value >= 7
+            ? "orange"
+            : value >= 5
+              ? "yellow"
+              : value >= 3
+                ? "green"
+                : "blue";
+      }
+
+      function iconUrl(value) {
+        return "/power-up/label-priority/icons/priority-" + value + ".svg";
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function showMessage(text, isError) {
+        document.getElementById("message").innerHTML = text
+          ? '<div class="message ' +
+            (isError ? "error" : "") +
+            '">' +
+            escapeHtml(text) +
+            "</div>"
+          : "";
+      }
+
+      function setStatus(text) {
+        document.getElementById("status").textContent = text;
+      }
+
+      async function apiRequest(url, options) {
+        var response = await fetch(
+          url,
+          Object.assign(
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+            options || {}
+          )
+        );
+
+        if (!response.ok) {
+          var errorBody = await response.json().catch(function () {
+            return {};
+          });
+          throw new Error(errorBody.error || "Request failed.");
+        }
+
+        if (response.status === 204) {
+          return {};
+        }
+
+        return response.json();
+      }
+
+      function renderPriorityOptions(priority) {
+        var form = document.getElementById("priorityForm");
+        var input = form.elements.priority;
+        var grid = document.getElementById("priorityGrid");
+        var selected = priority ? priority.value : 5;
+
+        input.value = String(selected);
+        grid.innerHTML = Array.from({ length: 10 }, function (_, index) {
+          var value = 10 - index;
+          return (
+            '<button type="button" class="priority-option ' +
+            priorityColor(value) +
+            (value === selected ? " selected" : "") +
+            '" data-priority="' +
+            value +
+            '">' +
+            '<img alt="" src="' +
+            iconUrl(value) +
+            '" /><span>' +
+            value +
+            "</span></button>"
+          );
+        }).join("");
+
+        grid.querySelectorAll("[data-priority]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            if (!canModify) {
+              setReadOnly();
+              return;
+            }
+
+            input.value = String(button.getAttribute("data-priority"));
+            grid.querySelectorAll(".selected").forEach(function (selectedButton) {
+              selectedButton.classList.remove("selected");
+            });
+            button.classList.add("selected");
+          });
+        });
+      }
+
+      function setReadOnly(reason) {
+        var form = document.getElementById("priorityForm");
+
+        document
+          .getElementById("priorityGrid")
+          .querySelectorAll("button")
+          .forEach(function (button) {
+            button.disabled = true;
+          });
+        document.getElementById("saveButton").disabled = true;
+        document.getElementById("clearButton").disabled = true;
+        showMessage(reason || "You can view this priority, but cannot change it.", true);
+      }
+
+      function syncPriorityPluginData(priority) {
+        return t.set(
+          "card",
+          "shared",
+          "labelPriority",
+          priority ? String(priority) : null
+        );
+      }
+
+      async function loadState() {
+        var member = await t.member("id");
+        var card = await t.card("id");
+
+        if (!member || !member.id || !card || !card.id) {
+          throw new Error("Could not determine the current Trello card.");
+        }
+
+        currentMemberId = member.id;
+        currentCardId = card.id;
+
+        var state = await apiRequest("/api/label-priority/state", {
+          method: "POST",
+          body: JSON.stringify({
+            trelloMemberId: currentMemberId,
+            trelloCardId: currentCardId,
+          }),
+        });
+
+        canModify = Boolean(state.canModify);
+        renderPriorityOptions(state.priority);
+        document.getElementById("priorityForm").hidden = false;
+        setStatus(
+          state.priority
+            ? "Current priority: " + state.priority.value
+            : "No priority set"
+        );
+
+        if (!canModify) {
+          setReadOnly(state.reason);
+        }
+      }
+
+      async function savePriority(event) {
+        event.preventDefault();
+
+        if (!canModify) {
+          setReadOnly();
+          return;
+        }
+
+        var button = document.getElementById("saveButton");
+        var priority = Number(event.currentTarget.elements.priority.value);
+
+        showMessage("", false);
+        button.disabled = true;
+
+        try {
+          var result = await apiRequest("/api/label-priority/priorities", {
+            method: "POST",
+            body: JSON.stringify({
+              trelloMemberId: currentMemberId,
+              trelloCardId: currentCardId,
+              priority: priority,
+            }),
+          });
+          await syncPriorityPluginData(result.priority.value);
+          setStatus("Current priority: " + result.priority.value);
+          showMessage("Priority saved.", false);
+          window.setTimeout(function () {
+            t.closeModal();
+          }, 700);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      async function clearPriority() {
+        if (!canModify) {
+          setReadOnly();
+          return;
+        }
+
+        var button = document.getElementById("clearButton");
+
+        showMessage("", false);
+        button.disabled = true;
+
+        try {
+          await apiRequest(
+            "/api/label-priority/priorities/" +
+              encodeURIComponent(currentCardId),
+            {
+              method: "DELETE",
+              body: JSON.stringify({ trelloMemberId: currentMemberId }),
+            }
+          );
+          await syncPriorityPluginData(null);
+          setStatus("No priority set");
+          showMessage("Priority cleared.", false);
+          window.setTimeout(function () {
+            t.closeModal();
+          }, 700);
+        } catch (error) {
+          showMessage(error.message || error, true);
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      document
+        .getElementById("priorityForm")
+        .addEventListener("submit", savePriority);
+      document
+        .getElementById("clearButton")
+        .addEventListener("click", clearPriority);
+
+      loadState().catch(function (error) {
+        setStatus("Could not load priority.");
+        showMessage(error.message || error, true);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144" role="img" aria-label="Create Card">
+  <rect x="28" y="50" width="74" height="54" rx="8" fill="none" stroke="#000" stroke-width="10"/>
+  <rect x="44" y="66" width="42" height="8" rx="4" fill="#000"/>
+  <rect x="44" y="83" width="28" height="8" rx="4" fill="#000"/>
+  <path d="M114 30v34M97 47h34" fill="none" stroke="#000" stroke-linecap="round" stroke-width="10"/>
+</svg>

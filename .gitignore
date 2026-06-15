@@ -1,0 +1,11 @@
+.env
+.power_up_env
+secrets.txt
+Notes.txt
+.vscode/*
+node_modules/*
+.vercel/
+*.db
+*.db-*
+dist/*
+permission_dashboard_admin_credentials.txt

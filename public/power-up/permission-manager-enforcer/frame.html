@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Enforcement</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --muted: #6b778c;
+        --text: #172b4d;
+        --surface: #ffffff;
+        --brand: #0c66e4;
+        --danger: #ae2e24;
+        --success: #216e4e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--surface);
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+      }
+
+      label {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      input {
+        height: 18px;
+        width: 36px;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .status.success {
+        color: var(--success);
+      }
+
+      button {
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        justify-self: start;
+        min-height: 34px;
+        padding: 7px 12px;
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      button[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <label>
+        <span>Enforcement active</span>
+        <input type="checkbox" id="enabled" disabled />
+      </label>
+      <div class="status" id="status">Loading enforcement state...</div>
+      <div class="status" id="settingsStatus"></div>
+      <button type="button" class="danger" id="purgeLabelsButton" hidden>
+        Purge legacy labels
+      </button>
+      <button type="button" id="closeButton">Close</button>
+    </main>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var t = window.TrelloPowerUp.iframe();
+      var memberId = "";
+      var boardId = "";
+
+      function setStatus(text, type) {
+        var status = document.getElementById("status");
+        status.textContent = text;
+        status.className = "status " + (type || "");
+      }
+
+      async function apiRequest(url, body) {
+        var response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body || {}),
+        });
+
+        if (!response.ok) {
+          var errorBody = await response.json().catch(function () {
+            return {};
+          });
+          throw new Error(errorBody.error || "Request failed.");
+        }
+
+        return response.json();
+      }
+
+      function render(state) {
+        var enabled = document.getElementById("enabled");
+        var purgeLabelsButton = document.getElementById("purgeLabelsButton");
+        document.getElementById("settingsStatus").textContent =
+          state.settings && state.settings.projectManagerCap
+            ? "Project manager cap: " + state.settings.projectManagerCap
+            : "";
+        var purgeable =
+          state.labelPurgePreview && state.labelPurgePreview.purgeable
+            ? state.labelPurgePreview.purgeable
+            : 0;
+        enabled.checked = Boolean(state.enforcementEnabled);
+        enabled.disabled = !state.isAdmin;
+        purgeLabelsButton.hidden = !state.isAdmin;
+        purgeLabelsButton.disabled = !state.isAdmin || purgeable === 0;
+        purgeLabelsButton.textContent =
+          purgeable > 0
+            ? "Purge " + purgeable + " legacy label" + (purgeable === 1 ? "" : "s")
+            : "No legacy labels to purge";
+
+        if (!state.isAdmin) {
+          setStatus("Only Trello workspace admins can change this.", "error");
+          return;
+        }
+
+        var statusText = state.enforcementEnabled
+          ? state.webhookActive
+            ? "Webhook active."
+            : "Enforcement is on, but the webhook is not active."
+          : "Enforcement is off.";
+
+        if (purgeable > 0) {
+          statusText +=
+            " " +
+            purgeable +
+            " legacy label" +
+            (purgeable === 1 ? " is" : "s are") +
+            " ready to purge.";
+        }
+
+        setStatus(
+          statusText,
+          state.enforcementEnabled && state.webhookActive ? "success" : ""
+        );
+      }
+
+      async function loadState() {
+        var member = await t.member("id");
+        var board = await t.board("id");
+
+        if (!member || !member.id || !board || !board.id) {
+          throw new Error("Could not determine the current Trello context.");
+        }
+
+        memberId = member.id;
+        boardId = board.id;
+
+        render(
+          await apiRequest(
+            "/api/permission-manager-enforcer/enforcement/state",
+            {
+              trelloMemberId: memberId,
+              trelloBoardId: boardId,
+            }
+          )
+        );
+      }
+
+      async function toggleEnforcement(event) {
+        var checkbox = event.currentTarget;
+
+        try {
+          checkbox.disabled = true;
+          setStatus("Saving...");
+          render(
+            await apiRequest("/api/permission-manager-enforcer/enforcement", {
+              trelloMemberId: memberId,
+              trelloBoardId: boardId,
+              enabled: checkbox.checked,
+            })
+          );
+        } catch (error) {
+          checkbox.checked = !checkbox.checked;
+          checkbox.disabled = false;
+          setStatus(error.message || error, "error");
+        }
+      }
+
+      async function purgeLegacyLabels(event) {
+        var button = event.currentTarget;
+        var originalText = button.textContent;
+
+        if (
+          !window.confirm(
+            "Delete every Trello label on this board that is not tracked as a project or department label?"
+          )
+        ) {
+          return;
+        }
+
+        try {
+          button.disabled = true;
+          button.textContent = "Purging...";
+          setStatus("Purging legacy labels. This may take a bit...");
+
+          var result = await apiRequest(
+            "/api/permission-manager-enforcer/labels/purge-legacy",
+            {
+              trelloMemberId: memberId,
+              trelloBoardId: boardId,
+            }
+          );
+          var purge = result.labelPurge;
+
+          setStatus(
+            "Deleted " +
+              purge.deleted +
+              " legacy label" +
+              (purge.deleted === 1 ? "" : "s") +
+              (purge.failed > 0 ? "; " + purge.failed + " failed." : "."),
+            purge.failed > 0 ? "error" : "success"
+          );
+          button.disabled = purge.failed === 0;
+          button.textContent =
+            purge.failed > 0
+              ? "Retry failed label purge"
+              : "No legacy labels to purge";
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = originalText;
+          setStatus(error.message || error, "error");
+        }
+      }
+
+      document
+        .getElementById("enabled")
+        .addEventListener("change", toggleEnforcement);
+      document
+        .getElementById("purgeLabelsButton")
+        .addEventListener("click", purgeLegacyLabels);
+      document.getElementById("closeButton").addEventListener("click", function () {
+        t.closeModal();
+      });
+
+      loadState().catch(function (error) {
+        setStatus(error.message || error, "error");
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Create Card Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      window.TrelloPowerUp.initialize({
+        "board-buttons": function () {
+          return [
+            {
+              text: "Create Card",
+              icon:
+                window.location.origin +
+                "/power-up/create-card/icons/section-icon-144.svg",
+              callback: function (t) {
+                return t.modal({
+                  title: "Create Card",
+                  url: "/power-up/create-card/frame.html",
+                  height: 420,
+                  fullscreen: false,
+                });
+              },
+            },
+          ];
+        },
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Configurator</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --border: #dfe1e6;
+        --muted: #6b778c;
+        --text: #172b4d;
+        --surface: #ffffff;
+        --soft: #f4f5f7;
+        --brand: #0c66e4;
+        --danger: #ae2e24;
+        --danger-soft: #ffebe6;
+        --success: #216e4e;
+        --success-soft: #dcfff1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--surface);
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+      }
+
+      header {
+        align-items: start;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        padding-bottom: 12px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      h2 {
+        font-size: 15px;
+      }
+
+      h3 {
+        font-size: 14px;
+      }
+
+      button {
+        align-items: center;
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        font-size: 13px;
+        justify-content: center;
+        min-height: 34px;
+        padding: 7px 12px;
+      }
+
+      button.secondary {
+        background: var(--soft);
+        color: var(--text);
+      }
+
+      button.danger {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      button.icon-button {
+        border-radius: 6px;
+        min-height: 30px;
+        min-width: 30px;
+        padding: 0;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      input {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font: inherit;
+        min-height: 34px;
+        padding: 7px 8px;
+        width: 100%;
+      }
+
+      label {
+        color: var(--muted);
+        display: grid;
+        font-size: 12px;
+        gap: 5px;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+        margin-top: 4px;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .message {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+        padding: 11px 12px;
+      }
+
+      .message.error {
+        background: var(--danger-soft);
+        border-color: #ffbdad;
+        color: var(--danger);
+      }
+
+      .message.success {
+        background: var(--success-soft);
+        border-color: #baf3db;
+        color: var(--success);
+      }
+
+      .grid {
+        align-items: start;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+
+      .panel {
+        align-self: start;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: grid;
+        gap: 12px;
+        max-height: calc(100vh - 150px);
+        padding: 12px;
+      }
+
+      .panel-header {
+        align-items: center;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      .entity-list {
+        align-content: start;
+        display: grid;
+        gap: 8px;
+        max-height: calc(100vh - 220px);
+        overflow: auto;
+      }
+
+      .entity {
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        padding: 9px;
+      }
+
+      .project-manager-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 6px;
+      }
+
+      .project-manager-chip {
+        align-items: center;
+        background: var(--soft);
+        border-radius: 6px;
+        color: var(--text);
+        display: inline-flex;
+        font-size: 12px;
+        gap: 5px;
+        min-height: 24px;
+        padding: 3px 7px;
+      }
+
+      .project-manager-chip button {
+        background: transparent;
+        color: var(--danger);
+        min-height: 18px;
+        min-width: 18px;
+        padding: 0;
+      }
+
+      .project-manager-add {
+        align-items: end;
+        display: grid;
+        gap: 6px;
+        grid-template-columns: minmax(120px, 1fr) auto;
+        margin-top: 7px;
+      }
+
+      .entity-title {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .entity-title h3 {
+        overflow-wrap: anywhere;
+      }
+
+      .entity-name-button {
+        background: transparent;
+        border-radius: 3px;
+        color: inherit;
+        display: inline;
+        font-size: inherit;
+        font-weight: inherit;
+        justify-content: start;
+        line-height: 1.25;
+        min-height: 0;
+        padding: 0;
+        text-align: left;
+        white-space: normal;
+      }
+
+      .entity-name-button:hover,
+      .entity-name-button:focus {
+        background: var(--soft);
+        box-shadow: 0 0 0 2px var(--soft);
+        outline: 0;
+      }
+
+      .inline-name-input {
+        font-size: 14px;
+        font-weight: 700;
+        min-height: 28px;
+        padding: 4px 6px;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+
+      .swatch {
+        border: 1px solid rgba(9, 30, 66, 0.2);
+        border-radius: 4px;
+        display: inline-block;
+        height: 22px;
+        width: 22px;
+      }
+
+      .row-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .empty {
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        padding: 14px;
+        text-align: center;
+      }
+
+      dialog {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        max-width: min(520px, calc(100vw - 28px));
+        padding: 0;
+        width: 520px;
+      }
+
+      dialog::backdrop {
+        background: rgba(9, 30, 66, 0.28);
+      }
+
+      form {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+      }
+
+      .form-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: end;
+      }
+
+      .color-picker {
+        display: grid;
+        gap: 8px;
+      }
+
+      .swatch-grid {
+        display: grid;
+        gap: 6px;
+        grid-template-columns: repeat(auto-fill, minmax(24px, 24px));
+      }
+
+      .color-option {
+        display: block;
+        height: 24px;
+        position: relative;
+        width: 24px;
+      }
+
+      .color-option input {
+        opacity: 0;
+        position: absolute;
+      }
+
+      .color-option span {
+        border: 1px solid rgba(9, 30, 66, 0.22);
+        border-radius: 4px;
+        display: block;
+        height: 24px;
+        width: 24px;
+      }
+
+      .color-option input:checked + span {
+        box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--brand);
+      }
+
+      .color-option input:disabled + span {
+        opacity: 0.25;
+        position: relative;
+      }
+
+      .color-option input:disabled + span::after {
+        background: var(--danger);
+        content: "";
+        height: 2px;
+        left: 3px;
+        position: absolute;
+        right: 3px;
+        top: 11px;
+        transform: rotate(-35deg);
+      }
+
+      .dialog-project-managers {
+        display: grid;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Project Configurator</h1>
+          <p class="status" id="status">Loading project configuration...</p>
+        </div>
+      </header>
+      <nav class="toolbar" id="toolbar"></nav>
+      <section id="message"></section>
+      <section class="grid">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Projects</h2>
+            <button type="button" data-action="createProject">Add project</button>
+          </div>
+          <div class="entity-list" id="projects"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Departments</h2>
+            <button type="button" data-action="createDepartment">Add department</button>
+          </div>
+          <div class="entity-list" id="departments"></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="editorDialog"></dialog>
+    <datalist id="memberOptions"></datalist>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var currentMemberId = "";
+      var currentBoardId = "";
+      var currentState = null;
+      var pmFieldApplyStatus = null;
+      var t = window.TrelloPowerUp.iframe();
+      var colorHex = {
+        green: "#4bce97",
+        yellow: "#f5cd47",
+        orange: "#fea362",
+        red: "#f87168",
+        purple: "#9f8fef",
+        blue: "#579dff",
+        sky: "#6cc3e0",
+        lime: "#94c748",
+        pink: "#e774bb",
+        black: "#8590a2",
+        green_light: "#baf3db",
+        yellow_light: "#f8e6a0",
+        orange_light: "#fedec8",
+        red_light: "#ffd5d2",
+        purple_light: "#dfd8fd",
+        blue_light: "#cce0ff",
+        sky_light: "#c6edfb",
+        lime_light: "#d3f1a7",
+        pink_light: "#fdd0ec",
+        black_light: "#dcdfe4",
+        green_dark: "#1f845a",
+        yellow_dark: "#946f00",
+        orange_dark: "#c25100",
+        red_dark: "#c9372c",
+        purple_dark: "#6e5dc6",
+        blue_dark: "#0c66e4",
+        sky_dark: "#227d9b",
+        lime_dark: "#5b7f24",
+        pink_dark: "#ae4787",
+        black_dark: "#626f86",
+      };
+      var inlineEdit = null;
+      var editorProjectManagerIds = [];
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function showMessage(text, type) {
+        document.getElementById("message").innerHTML = text
+          ? '<div class="message ' + (type || "") + '">' + escapeHtml(text) + "</div>"
+          : "";
+      }
+
+      function colorName(color) {
+        return color.replace(/_/g, " ");
+      }
+
+      function normalizeName(name) {
+        return String(name || "").trim().toLowerCase();
+      }
+
+      function renderSwatch(color) {
+        return (
+          '<span class="swatch" title="' +
+          escapeHtml(colorName(color)) +
+          '" style="background:' +
+          (colorHex[color] || "#dfe1e6") +
+          '"></span>'
+        );
+      }
+
+      function renderColorPicker(name, selected, disabledColors) {
+        var disabledSet = new Set(disabledColors || []);
+        return (
+          '<div class="color-picker"><p class="meta">Color</p><div class="swatch-grid">' +
+          currentState.colors.all
+            .map(function (color) {
+              var disabled = disabledSet.has(color) && color !== selected;
+              return (
+                '<label class="color-option" title="' +
+                escapeHtml(disabled ? colorName(color) + " is already used" : colorName(color)) +
+                '">' +
+                '<input type="radio" name="' +
+                escapeHtml(name) +
+                '" value="' +
+                escapeHtml(color) +
+                '" ' +
+                (color === selected ? "checked " : "") +
+                (disabled ? "disabled " : "") +
+                "/>" +
+                '<span style="background:' +
+                (colorHex[color] || "#dfe1e6") +
+                '"></span></label>'
+              );
+            })
+            .join("") +
+          "</div></div>"
+        );
+      }
+
+      function entityHtml(entity, kind) {
+        var color = kind === "project" ? entity.projectColor : entity.departmentColor;
+        var projectManagers =
+          kind === "project" ? renderProjectManagers(entity, false) : "";
+        var projectManagerEditor =
+          kind === "project" && currentState.capabilities.canEditProjectManagers
+            ? renderProjectManagerAdd(entity)
+            : "";
+        return (
+          '<article class="entity">' +
+          renderSwatch(color) +
+          '<div class="entity-title"><h3>' +
+          '<button type="button" class="entity-name-button" title="Rename" data-inline-edit-' +
+          kind +
+          '="' +
+          escapeHtml(entity.id) +
+          '">' +
+          escapeHtml(entity.name) +
+          "</button></h3>" +
+          projectManagers +
+          projectManagerEditor +
+          "</div>" +
+          '<div class="row-actions">' +
+          '<button type="button" class="secondary" title="Edit" aria-label="Edit ' +
+          escapeHtml(entity.name) +
+          '" data-edit-' +
+          kind +
+          '="' +
+          escapeHtml(entity.id) +
+          '">Edit</button>' +
+          '<button type="button" class="danger" title="Delete" aria-label="Delete ' +
+          escapeHtml(entity.name) +
+          '" data-delete-' +
+          kind +
+          '="' +
+          escapeHtml(entity.id) +
+          '">Del</button>' +
+          "</div></article>"
+        );
+      }
+
+      function renderProjectManagers(project, forDialog) {
+        var managers = project.projectManagers || [];
+
+        if (managers.length === 0) {
+          return '<p class="meta">No project managers</p>';
+        }
+
+        return (
+          '<div class="project-manager-list">' +
+          managers
+            .map(function (manager) {
+              var removeButton =
+                !forDialog && currentState.capabilities.canEditProjectManagers
+                  ? '<button type="button" title="Remove" aria-label="Remove ' +
+                    escapeHtml(manager.displayName) +
+                    '" data-remove-project-manager="' +
+                    escapeHtml(project.id) +
+                    '" data-manager-id="' +
+                    escapeHtml(manager.trelloMemberId) +
+                    '">x</button>'
+                  : "";
+
+              return (
+                '<span class="project-manager-chip">' +
+                escapeHtml(manager.displayName) +
+                removeButton +
+                "</span>"
+              );
+            })
+            .join("") +
+          "</div>"
+        );
+      }
+
+      function renderProjectManagerAdd(project) {
+        if ((project.projectManagers || []).length >= currentState.settings.projectManagerCap) {
+          return '<p class="meta">Project manager cap reached.</p>';
+        }
+
+        return (
+          '<div class="project-manager-add">' +
+          '<label>Project manager<input list="memberOptions" data-project-manager-input="' +
+          escapeHtml(project.id) +
+          '" autocomplete="off" /></label>' +
+          '<button type="button" data-add-project-manager="' +
+          escapeHtml(project.id) +
+          '">Add</button></div>'
+        );
+      }
+
+      function renderState(state) {
+        currentState = state;
+        document.getElementById("status").textContent =
+          state.projects.length +
+          " projects and " +
+          state.departments.length +
+          " departments configured";
+        document.getElementById("toolbar").innerHTML =
+          '<button type="button" data-command="syncLabels">Synchronize labels</button>' +
+          (state.capabilities.canApplyProjectManagerFields
+            ? '<button type="button" data-command="applyPmFields">Apply PM Fields</button>'
+            : "");
+        document.getElementById("memberOptions").innerHTML = state.members
+          .map(function (member) {
+            return (
+              '<option value="' +
+              escapeHtml(member.displayName) +
+              '" data-member-id="' +
+              escapeHtml(member.trelloMemberId) +
+              '"></option>'
+            );
+          })
+          .join("");
+
+        document.getElementById("projects").innerHTML = state.projects.length
+          ? state.projects.map(function (project) {
+              return entityHtml(project, "project");
+            }).join("")
+          : '<div class="empty">No projects have been configured yet.</div>';
+
+        document.getElementById("departments").innerHTML = state.departments.length
+          ? state.departments.map(function (department) {
+              return entityHtml(department, "department");
+            }).join("")
+          : '<div class="empty">No departments have been configured yet.</div>';
+
+        bindButtons();
+      }
+
+      function bindButtons() {
+        document.querySelectorAll("button[data-action]").forEach(function (button) {
+          button.onclick = function () {
+            openEditor(button.getAttribute("data-action"));
+          };
+        });
+        document.querySelectorAll("button[data-command='syncLabels']").forEach(function (button) {
+          button.onclick = function () {
+            synchronizeLabels(button);
+          };
+        });
+        document.querySelectorAll("button[data-command='applyPmFields']").forEach(function (button) {
+          button.onclick = function () {
+            applyPmFields(button);
+          };
+        });
+        document.querySelectorAll("button[data-add-project-manager]").forEach(function (button) {
+          button.onclick = function () {
+            addProjectManager(button.getAttribute("data-add-project-manager"));
+          };
+        });
+        document.querySelectorAll("button[data-remove-project-manager]").forEach(function (button) {
+          button.onclick = function () {
+            removeProjectManager(
+              button.getAttribute("data-remove-project-manager"),
+              button.getAttribute("data-manager-id")
+            );
+          };
+        });
+        document.querySelectorAll("button[data-edit-project]").forEach(function (button) {
+          button.onclick = function () {
+            openEditor("editProject", button.getAttribute("data-edit-project"));
+          };
+        });
+        document.querySelectorAll("button[data-edit-department]").forEach(function (button) {
+          button.onclick = function () {
+            openEditor("editDepartment", button.getAttribute("data-edit-department"));
+          };
+        });
+        document.querySelectorAll("button[data-delete-project]").forEach(function (button) {
+          button.onclick = function () {
+            deleteEntity("project", button.getAttribute("data-delete-project"));
+          };
+        });
+        document.querySelectorAll("button[data-delete-department]").forEach(function (button) {
+          button.onclick = function () {
+            deleteEntity("department", button.getAttribute("data-delete-department"));
+          };
+        });
+        document.querySelectorAll("button[data-inline-edit-project]").forEach(function (button) {
+          button.onclick = function () {
+            startInlineEdit("project", button.getAttribute("data-inline-edit-project"), button);
+          };
+        });
+        document.querySelectorAll("button[data-inline-edit-department]").forEach(function (button) {
+          button.onclick = function () {
+            startInlineEdit("department", button.getAttribute("data-inline-edit-department"), button);
+          };
+        });
+      }
+
+      function startInlineEdit(kind, id, button) {
+        if (inlineEdit) {
+          inlineEdit.input.blur();
+          return;
+        }
+
+        var items = kind === "project" ? currentState.projects : currentState.departments;
+        var entity = items.find(function (item) { return item.id === id; });
+
+        if (!entity) {
+          return;
+        }
+
+        var input = document.createElement("input");
+        input.className = "inline-name-input";
+        input.maxLength = 160;
+        input.required = true;
+        input.value = entity.name;
+        inlineEdit = {
+          cancelled: false,
+          entity: entity,
+          input: input,
+          kind: kind,
+          originalName: entity.name,
+        };
+
+        button.replaceWith(input);
+        input.focus();
+        input.select();
+
+        input.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            inlineEdit.cancelled = true;
+            finishInlineEdit(false);
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            input.blur();
+          }
+        });
+        input.addEventListener("blur", function () {
+          if (inlineEdit && inlineEdit.input === input) {
+            finishInlineEdit(!inlineEdit.cancelled);
+          }
+        });
+      }
+
+      async function finishInlineEdit(shouldSave) {
+        var edit = inlineEdit;
+        inlineEdit = null;
+
+        if (!edit) {
+          return;
+        }
+
+        var name = String(edit.input.value || "").trim();
+
+        if (!shouldSave || name === edit.originalName) {
+          await loadState();
+          return;
+        }
+
+        if (!name) {
+          showMessage("Name is required.", "error");
+          await loadState();
+          return;
+        }
+
+        try {
+          ensureUniqueName(edit.kind, name, edit.entity.id);
+          await apiRequest(
+            "/api/project-configurator/" +
+              (edit.kind === "project" ? "projects" : "departments") +
+              "/" +
+              encodeURIComponent(edit.entity.id) +
+              "/name",
+            { name: name },
+            "PATCH"
+          );
+          await loadState();
+          showMessage((edit.kind === "project" ? "Project" : "Department") + " renamed.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+          await loadState();
+        }
+      }
+
+      function openEditor(action, id) {
+        var entity =
+          action === "editProject"
+            ? currentState.projects.find(function (item) { return item.id === id; })
+            : action === "editDepartment"
+              ? currentState.departments.find(function (item) { return item.id === id; })
+              : null;
+        var isProject = action === "createProject" || action === "editProject";
+        var isEdit = Boolean(entity);
+
+        if (action === "createDepartment" && currentState.colors.availableDepartmentColors.length === 0) {
+          showMessage("All Trello colors are already used by departments.", "error");
+          return;
+        }
+
+        var name = entity ? entity.name : "";
+        var color = entity
+          ? isProject
+            ? entity.projectColor
+            : entity.departmentColor
+          : isProject
+            ? currentState.colors.all[0]
+            : currentState.colors.availableDepartmentColors[0] || currentState.colors.all[0];
+        var disabledColors = isProject
+          ? []
+          : currentState.departments.map(function (department) {
+              return department.departmentColor;
+            });
+        var dialog = document.getElementById("editorDialog");
+        editorProjectManagerIds =
+          isProject && entity
+            ? (entity.projectManagers || []).map(function (manager) {
+                return manager.trelloMemberId;
+              })
+            : [];
+
+        dialog.innerHTML =
+          '<form method="dialog" id="editorForm">' +
+          "<h2>" +
+          (isEdit ? "Edit " : "Add ") +
+          (isProject ? "project" : "department") +
+          "</h2>" +
+          '<label>Name<input name="name" required maxlength="160" value="' +
+          escapeHtml(name) +
+          '" /></label>' +
+          renderColorPicker(isProject ? "projectColor" : "departmentColor", color, disabledColors) +
+          (isProject && action === "createProject" && currentState.capabilities.canEditProjectManagers
+            ? renderDialogProjectManagers()
+            : "") +
+          '<div class="form-actions">' +
+          '<button type="button" class="secondary" data-close-dialog>Cancel</button>' +
+          '<button type="submit">Save</button>' +
+          "</div></form>";
+
+        dialog.querySelector("[data-close-dialog]").addEventListener("click", function () {
+          dialog.close();
+        });
+        dialog.querySelector("form").addEventListener("submit", function (event) {
+          submitEditor(event, { action: action, entity: entity });
+        });
+        bindDialogProjectManagerControls();
+        dialog.showModal();
+      }
+
+      function renderDialogProjectManagers() {
+        var managers = editorProjectManagerIds
+          .map(function (id) {
+            return currentState.members.find(function (member) {
+              return member.trelloMemberId === id;
+            });
+          })
+          .filter(Boolean);
+
+        return (
+          '<div class="dialog-project-managers" id="dialogProjectManagers">' +
+          '<p class="meta">Project managers</p>' +
+          '<div class="project-manager-list">' +
+          managers
+            .map(function (manager) {
+              return (
+                '<span class="project-manager-chip">' +
+                escapeHtml(manager.displayName) +
+                '<button type="button" data-dialog-remove-manager="' +
+                escapeHtml(manager.trelloMemberId) +
+                '">x</button></span>'
+              );
+            })
+            .join("") +
+          "</div>" +
+          '<div class="project-manager-add"><label>Add project manager<input list="memberOptions" id="dialogProjectManagerInput" autocomplete="off" /></label>' +
+          '<button type="button" id="dialogAddProjectManagerButton">Add</button></div>' +
+          "</div>"
+        );
+      }
+
+      function bindDialogProjectManagerControls() {
+        var dialog = document.getElementById("editorDialog");
+        var addButton = dialog.querySelector("#dialogAddProjectManagerButton");
+
+        if (addButton) {
+          addButton.onclick = function () {
+            var input = dialog.querySelector("#dialogProjectManagerInput");
+            var member = findMemberByInput(input.value);
+
+            if (!member) {
+              showMessage("Choose a member from the list.", "error");
+              return;
+            }
+
+            if (editorProjectManagerIds.indexOf(member.trelloMemberId) === -1) {
+              if (editorProjectManagerIds.length >= currentState.settings.projectManagerCap) {
+                showMessage("Project manager cap reached.", "error");
+                return;
+              }
+
+              editorProjectManagerIds.push(member.trelloMemberId);
+            }
+
+            input.value = "";
+            dialog.querySelector("#dialogProjectManagers").outerHTML =
+              renderDialogProjectManagers();
+            bindDialogProjectManagerControls();
+          };
+        }
+
+        dialog.querySelectorAll("[data-dialog-remove-manager]").forEach(function (button) {
+          button.onclick = function () {
+            var id = button.getAttribute("data-dialog-remove-manager");
+            editorProjectManagerIds = editorProjectManagerIds.filter(function (item) {
+              return item !== id;
+            });
+            dialog.querySelector("#dialogProjectManagers").outerHTML =
+              renderDialogProjectManagers();
+            bindDialogProjectManagerControls();
+          };
+        });
+      }
+
+      async function submitEditor(event, context) {
+        event.preventDefault();
+        showMessage("", "");
+
+        var form = event.currentTarget;
+        var dialog = document.getElementById("editorDialog");
+        var isProject = context.action === "createProject" || context.action === "editProject";
+        var name = String(form.elements.name.value || "").trim();
+        var colorField = isProject ? "projectColor" : "departmentColor";
+        var color = String(new FormData(form).get(colorField) || "");
+
+        if (!name || !color) {
+          showMessage("Name and color are required.", "error");
+          return;
+        }
+
+        try {
+          ensureUniqueName(isProject ? "project" : "department", name, context.entity && context.entity.id);
+
+          if (context.action === "createProject") {
+            await apiRequest("/api/project-configurator/projects", {
+              name: name,
+              projectColor: color,
+              projectManagerMemberIds: editorProjectManagerIds,
+            });
+          } else if (context.action === "editProject") {
+            await apiRequest(
+              "/api/project-configurator/projects/" + encodeURIComponent(context.entity.id) + "/name",
+              { name: name },
+              "PATCH"
+            );
+            await apiRequest(
+              "/api/project-configurator/projects/" + encodeURIComponent(context.entity.id) + "/color",
+              { projectColor: color },
+              "PATCH"
+            );
+          } else if (context.action === "createDepartment") {
+            await apiRequest("/api/project-configurator/departments", {
+              name: name,
+              departmentColor: color,
+            });
+          } else if (context.action === "editDepartment") {
+            await apiRequest(
+              "/api/project-configurator/departments/" + encodeURIComponent(context.entity.id) + "/name",
+              { name: name },
+              "PATCH"
+            );
+            await apiRequest(
+              "/api/project-configurator/departments/" + encodeURIComponent(context.entity.id) + "/color",
+              { departmentColor: color },
+              "PATCH"
+            );
+          }
+
+          dialog.close();
+          await loadState();
+          showMessage((isProject ? "Project" : "Department") + " saved.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        }
+      }
+
+      function ensureUniqueName(kind, name, currentId) {
+        var items = kind === "project" ? currentState.projects : currentState.departments;
+        var normalized = normalizeName(name);
+        var duplicate = items.some(function (item) {
+          return item.id !== currentId && normalizeName(item.name) === normalized;
+        });
+
+        if (duplicate) {
+          throw new Error("A " + kind + " with that name already exists.");
+        }
+      }
+
+      async function deleteEntity(kind, id) {
+        var items = kind === "project" ? currentState.projects : currentState.departments;
+        var entity = items.find(function (item) { return item.id === id; });
+        var label = entity ? entity.name : "this " + kind;
+
+        if (!window.confirm("Delete " + label + "?")) {
+          return;
+        }
+
+        try {
+          await apiRequest(
+            "/api/project-configurator/" +
+              (kind === "project" ? "projects" : "departments") +
+              "/" +
+              encodeURIComponent(id),
+            {},
+            "DELETE"
+          );
+          await loadState();
+          showMessage((kind === "project" ? "Project" : "Department") + " deleted.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        }
+      }
+
+      async function synchronizeLabels(button) {
+        showMessage("", "");
+
+        try {
+          button.disabled = true;
+          button.textContent = "Synchronizing...";
+          var result = await apiRequest("/api/project-configurator/labels/sync", {
+            trelloBoardId: currentBoardId,
+          });
+          var sync = result.labelSync;
+          var text =
+            "Synchronized " +
+            sync.synced +
+            " of " +
+            sync.attempted +
+            " labels across " +
+            sync.boards +
+            " known boards.";
+
+          showMessage(text, sync.failed > 0 ? "error" : "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Synchronize labels";
+        }
+      }
+
+      async function applyPmFields(button) {
+        showMessage("", "");
+        pmFieldApplyStatus = null;
+
+        try {
+          button.disabled = true;
+          button.textContent = "Applying...";
+          await apiRequest("/api/project-configurator/project-manager-fields/apply", {
+            trelloBoardId: currentBoardId,
+          });
+          await pollPmFieldApply(button);
+        } catch (error) {
+          showMessage(error.message || error, "error");
+          button.disabled = false;
+          button.textContent = "Apply PM Fields";
+        }
+      }
+
+      async function pollPmFieldApply(button) {
+        var result = await apiRequest(
+          "/api/project-configurator/project-manager-fields/apply/status",
+          { trelloBoardId: currentBoardId }
+        );
+        var apply = result.apply || pmFieldApplyStatus || {};
+
+        if (result.apply) {
+          pmFieldApplyStatus = result.apply;
+        }
+
+        var text = describePmFieldApplyStatus(apply);
+
+        if (!apply.done) {
+          showMessage(text, "success");
+          window.setTimeout(function () {
+            pollPmFieldApply(button).catch(function (error) {
+              showMessage(error.message || error, "error");
+              button.disabled = false;
+              button.textContent = "Apply PM Fields";
+            });
+          }, 1200);
+          return;
+        }
+
+        showMessage(
+          "Applied PM fields to " +
+            (apply.updated || 0) +
+            " card(s); " +
+            (apply.unchanged || 0) +
+            " already correct; " +
+            (apply.skipped || 0) +
+            " skipped.",
+          (apply.failed || 0) > 0 || apply.error ? "error" : "success"
+        );
+        button.disabled = false;
+        button.textContent = "Apply PM Fields";
+      }
+
+      function describePmFieldApplyStatus(apply) {
+        var processed =
+          (apply.updated || 0) + (apply.unchanged || 0) + (apply.failed || 0);
+
+        if (apply.phase === "applying" || apply.totalCards > 0 || apply.matchedCards > 0) {
+          return (
+            "Applying PM fields: " +
+            processed +
+            " of " +
+            (apply.matchedCards || 0) +
+            " matching card(s) processed" +
+            ((apply.unchanged || 0) > 0
+              ? ", " + apply.unchanged + " already correct"
+              : "") +
+            ((apply.failed || 0) > 0 ? ", " + apply.failed + " failed" : "") +
+            "."
+          );
+        }
+
+        return "Scanning board cards for project labels...";
+      }
+
+      async function addProjectManager(projectId) {
+        var input = document.querySelector('[data-project-manager-input="' + projectId + '"]');
+        var member = findMemberByInput(input && input.value);
+
+        if (!member) {
+          showMessage("Choose a member from the list.", "error");
+          return;
+        }
+
+        try {
+          await apiRequest(
+            "/api/project-configurator/projects/" +
+              encodeURIComponent(projectId) +
+              "/project-managers",
+            { managerMemberId: member.trelloMemberId }
+          );
+          await loadState();
+          showMessage("Project manager added.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        }
+      }
+
+      async function removeProjectManager(projectId, managerMemberId) {
+        var project = currentState.projects.find(function (item) {
+          return item.id === projectId;
+        });
+        var manager =
+          project &&
+          (project.projectManagers || []).find(function (item) {
+            return item.trelloMemberId === managerMemberId;
+          });
+
+        if (!window.confirm("Remove " + (manager ? manager.displayName : "this project manager") + "?")) {
+          return;
+        }
+
+        try {
+          await apiRequest(
+            "/api/project-configurator/projects/" +
+              encodeURIComponent(projectId) +
+              "/project-managers/" +
+              encodeURIComponent(managerMemberId),
+            {},
+            "DELETE"
+          );
+          await loadState();
+          showMessage("Project manager removed.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        }
+      }
+
+      function findMemberByInput(value) {
+        var normalized = normalizeName(value);
+
+        return currentState.members.find(function (member) {
+          return (
+            normalizeName(member.displayName) === normalized ||
+            normalizeName(member.username) === normalized
+          );
+        });
+      }
+
+      async function apiRequest(url, body, method) {
+        var payload = Object.assign({}, body || {}, {
+          trelloMemberId: currentMemberId,
+          trelloBoardId: currentBoardId,
+        });
+        var response = await fetch(url, {
+          method: method || "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          var errorBody = await response.json().catch(function () {
+            return {};
+          });
+          throw new Error(errorBody.error || "Request failed.");
+        }
+
+        if (response.status === 204) {
+          return {};
+        }
+
+        return response.json();
+      }
+
+      async function loadState() {
+        if (!currentMemberId) {
+          var member = await t.member("id");
+
+          if (!member || !member.id) {
+            throw new Error("Could not determine the current Trello member.");
+          }
+
+          currentMemberId = member.id;
+        }
+
+        if (!currentBoardId) {
+          var board = await t.board("id");
+
+          if (!board || !board.id) {
+            throw new Error("Could not determine the current Trello board.");
+          }
+
+          currentBoardId = board.id;
+        }
+
+        var state = await apiRequest("/api/project-configurator/state", {});
+        renderState(state);
+      }
+
+      loadState().catch(function (error) {
+        document.getElementById("status").textContent = "Could not load configuration.";
+        showMessage(error.message || error, "error");
+      });
+    </script>
+  </body>
+</html>

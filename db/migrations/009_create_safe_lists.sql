@@ -1,0 +1,1 @@
+-- Safe lists are no longer part of enforcement configuration.

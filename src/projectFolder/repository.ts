@@ -12,11 +12,11 @@ type ProjectFolderRouteRow = {
   label_name: string;
 };
 
-export async function resolveProjectFolderRoute(
+export async function resolveProjectFolderRoutes(
   labels: string[]
-): Promise<ProjectFolderRoute | null> {
+): Promise<ProjectFolderRoute[]> {
   if (labels.length === 0) {
-    return null;
+    return [];
   }
 
   const result = await getDbPool().query<ProjectFolderRouteRow>(
@@ -41,18 +41,13 @@ export async function resolveProjectFolderRoute(
       where projects.archived_at is null
         and project_folder_routes.enabled = true
       order by card_labels.ordinality asc
-      limit 1
     `,
     [labels]
   );
 
-  const row = result.rows[0];
-
-  return row
-    ? {
-        projectName: row.project_name,
-        folderPath: row.folder_path,
-        labelName: row.label_name,
-      }
-    : null;
+  return result.rows.map((row) => ({
+    projectName: row.project_name,
+    folderPath: row.folder_path,
+    labelName: row.label_name,
+  }));
 }

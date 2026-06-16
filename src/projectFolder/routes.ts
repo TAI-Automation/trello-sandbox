@@ -1,24 +1,26 @@
 import express from "express";
 
-import { resolveProjectFolderRoute } from "./repository.js";
+import { resolveProjectFolderRoutes } from "./repository.js";
 
 export const projectFolderRouter = express.Router();
 
 projectFolderRouter.post("/api/project-folder/resolve", async (req, res, next) => {
   try {
     const labels = readStringArray(req.body, "labels");
-    const match = await resolveProjectFolderRoute(labels);
+    const routes = await resolveProjectFolderRoutes(labels);
 
-    if (!match) {
-      res.json({ matched: false });
+    if (routes.length === 0) {
+      res.json({ matched: false, routes: [] });
       return;
     }
 
     res.json({
       matched: true,
-      projectName: match.projectName,
-      folderPath: match.folderPath,
-      labelName: match.labelName,
+      routes: routes.map((route) => ({
+        labelName: route.labelName,
+        projectName: route.projectName,
+        folderPath: route.folderPath,
+      })),
     });
   } catch (error) {
     next(error);

@@ -195,6 +195,22 @@
         padding: 9px;
       }
 
+      .project-entity {
+        align-items: start;
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .project-entity-header {
+        align-items: start;
+        display: flex;
+        gap: 10px;
+        justify-content: space-between;
+      }
+
+      .project-entity-header h3 {
+        min-width: 0;
+      }
+
       .project-manager-list {
         display: flex;
         flex-wrap: wrap;
@@ -295,6 +311,10 @@
       .row-actions {
         display: flex;
         gap: 6px;
+      }
+
+      .project-entity .row-actions {
+        flex: 0 0 auto;
       }
 
       .empty {
@@ -533,21 +553,7 @@
             : "";
         var folderPathEditor =
           kind === "project" ? renderProjectFolderPathEditor(entity) : "";
-        return (
-          '<article class="entity">' +
-          renderSwatch(color) +
-          '<div class="entity-title"><h3>' +
-          '<button type="button" class="entity-name-button" title="Rename" data-inline-edit-' +
-          kind +
-          '="' +
-          escapeHtml(entity.id) +
-          '">' +
-          escapeHtml(entity.name) +
-          "</button></h3>" +
-          projectManagers +
-          projectManagerEditor +
-          folderPathEditor +
-          "</div>" +
+        var actions =
           '<div class="row-actions">' +
           '<button type="button" class="secondary" title="Edit" aria-label="Edit ' +
           escapeHtml(entity.name) +
@@ -563,7 +569,45 @@
           '="' +
           escapeHtml(entity.id) +
           '">Del</button>' +
-          "</div></article>"
+          "</div>";
+        var titleButton =
+          '<button type="button" class="entity-name-button" title="Rename" data-inline-edit-' +
+          kind +
+          '="' +
+          escapeHtml(entity.id) +
+          '">' +
+          escapeHtml(entity.name) +
+          "</button>";
+
+        if (kind === "project") {
+          return (
+            '<article class="entity project-entity">' +
+            renderSwatch(color) +
+            '<div class="entity-title">' +
+            '<div class="project-entity-header"><h3>' +
+            titleButton +
+            "</h3>" +
+            actions +
+            "</div>" +
+            projectManagers +
+            projectManagerEditor +
+            folderPathEditor +
+            "</div></article>"
+          );
+        }
+
+        return (
+          '<article class="entity">' +
+          renderSwatch(color) +
+          '<div class="entity-title"><h3>' +
+          titleButton +
+          "</h3>" +
+          projectManagers +
+          projectManagerEditor +
+          folderPathEditor +
+          "</div>" +
+          actions +
+          "</article>"
         );
       }
 

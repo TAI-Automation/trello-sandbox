@@ -16,6 +16,7 @@ export type ProjectSummary = {
   labelText: string;
   projectColor: string;
   departmentId: string;
+  folderPath: string | null;
   projectManagers: ProjectManagerSummary[];
 };
 
@@ -62,6 +63,7 @@ type ProjectRow = {
   id: string;
   name: string;
   project_color: string;
+  folder_path: string | null;
 };
 
 type ProjectManagerRow = {
@@ -116,10 +118,16 @@ export async function listActiveProjects(
   client?: pg.PoolClient
 ): Promise<ProjectSummary[]> {
   const projectResult = await db(client).query<ProjectRow>(`
-      select id::text, name, project_color
+      select
+        projects.id::text,
+        projects.name,
+        projects.project_color,
+        project_folder_routes.folder_path
       from projects
-      where archived_at is null
-      order by name asc
+      left join project_folder_routes
+        on project_folder_routes.project_id = projects.id
+      where projects.archived_at is null
+      order by projects.name asc
     `);
   const managerResult = await db(client).query<ProjectManagerRow>(`
       select
@@ -293,7 +301,7 @@ export async function createProject(input: {
       `
         insert into projects (name, project_color)
         values ($1, $2)
-        returning id::text, name, project_color
+        returning id::text, name, project_color, null::text as folder_path
       `,
       [input.name, input.projectColor]
     );
@@ -328,10 +336,16 @@ export async function getProject(
 ): Promise<ProjectSummary | null> {
   const result = await db(client).query<ProjectRow>(
     `
-      select id::text, name, project_color
+      select
+        projects.id::text,
+        projects.name,
+        projects.project_color,
+        project_folder_routes.folder_path
       from projects
-      where id = $1
-        and archived_at is null
+      left join project_folder_routes
+        on project_folder_routes.project_id = projects.id
+      where projects.id = $1
+        and projects.archived_at is null
     `,
     [projectId]
   );
@@ -355,13 +369,13 @@ export async function updateProjectName(input: {
           updated_at = now()
       where id = $1
         and archived_at is null
-      returning id::text, name, project_color
+      returning id::text, name, project_color, null::text as folder_path
     `,
     [input.projectId, input.name]
   );
 
   const row = result.rows[0];
-  return row ? mapProject(row) : null;
+  return row ? getProject(row.id) : null;
 }
 
 export async function updateProjectColor(input: {
@@ -375,13 +389,13 @@ export async function updateProjectColor(input: {
           updated_at = now()
       where id = $1
         and archived_at is null
-      returning id::text, name, project_color
+      returning id::text, name, project_color, null::text as folder_path
     `,
     [input.projectId, input.projectColor]
   );
 
   const row = result.rows[0];
-  return row ? mapProject(row) : null;
+  return row ? getProject(row.id) : null;
 }
 
 export async function deleteProject(projectId: string): Promise<boolean> {
@@ -472,6 +486,30 @@ export async function removeProjectManager(input: {
         and trello_member_id = $2
     `,
     [input.projectId, input.trelloMemberId]
+  );
+
+  return getProject(input.projectId);
+}
+
+export async function upsertProjectFolderRoute(input: {
+  projectId: string;
+  folderPath: string;
+}): Promise<ProjectSummary | null> {
+  await getDbPool().query(
+    `
+      insert into project_folder_routes (
+        project_id,
+        folder_path,
+        enabled,
+        updated_at
+      )
+      values ($1, $2, true, now())
+      on conflict (project_id) do update
+      set folder_path = excluded.folder_path,
+          enabled = true,
+          updated_at = now()
+    `,
+    [input.projectId, input.folderPath]
   );
 
   return getProject(input.projectId);
@@ -799,6 +837,7 @@ function mapProject(
     labelText: row.name,
     projectColor: row.project_color,
     departmentId: "",
+    folderPath: row.folder_path,
     projectManagers,
   };
 }

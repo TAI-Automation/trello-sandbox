@@ -21,6 +21,7 @@ import {
   updateDepartmentName,
   updateProjectColor,
   updateProjectName,
+  upsertProjectFolderRoute,
 } from "./repository.js";
 import { syncAllConfiguredLabels } from "./labelSync.js";
 import { resolveProjectConfiguratorViewer } from "./permissions.js";
@@ -315,6 +316,32 @@ projectConfiguratorRouter.patch(
       const project = await updateProjectColor({
         projectId: req.params.projectId,
         projectColor,
+      });
+
+      if (!project) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      res.json({ project });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.patch(
+  "/api/project-configurator/projects/:projectId/folder-path",
+  async (req, res, next) => {
+    try {
+      const folderPath = readRequiredString(req.body, "folderPath");
+
+      if (!(await activeProjectExists(req.params.projectId))) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const project = await upsertProjectFolderRoute({
+        projectId: req.params.projectId,
+        folderPath,
       });
 
       if (!project) {

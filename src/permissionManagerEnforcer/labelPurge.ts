@@ -5,6 +5,8 @@ import {
 } from "../trello/api.js";
 import { getTrelloCredentials } from "../projectConfigurator/permissions.js";
 import {
+  listActiveDepartments,
+  listActiveProjects,
   listBoardDepartmentLabels,
   listBoardProjectLabels,
 } from "../projectConfigurator/repository.js";
@@ -76,18 +78,70 @@ export async function purgeLegacyLabels(
 }
 
 async function getLegacyLabelPurgeContext(trelloBoardId: string) {
-  const [trelloLabels, projectLabels, departmentLabels] = await Promise.all([
+  const [
+    trelloLabels,
+    projectLabels,
+    departmentLabels,
+    activeProjects,
+    activeDepartments,
+  ] = await Promise.all([
     listTrelloBoardLabels(trelloBoardId, getTrelloCredentials()),
     listBoardProjectLabels(trelloBoardId),
     listBoardDepartmentLabels(trelloBoardId),
+    listActiveProjects(),
+    listActiveDepartments(),
   ]);
+  const configuredColorsByName = new Map<string, Set<string>>();
+
+  for (const project of activeProjects) {
+    addConfiguredLabelColor(
+      configuredColorsByName,
+      project.labelText,
+      project.projectColor
+    );
+  }
+
+  for (const department of activeDepartments) {
+    addConfiguredLabelColor(
+      configuredColorsByName,
+      department.labelText,
+      department.departmentColor
+    );
+  }
+
   const preservedLabelIds = new Set(
     [...projectLabels, ...departmentLabels]
+      .filter((label) => {
+        const colors = configuredColorsByName.get(label.syncedLabelText);
+
+        return colors?.has(label.syncedColor) === true;
+      })
       .map((label) => label.trelloLabelId)
       .filter((labelId) => !labelId.startsWith("sync-error-"))
   );
 
+  for (const label of trelloLabels) {
+    const colors = configuredColorsByName.get(label.name);
+
+    if (colors?.has(label.color)) {
+      preservedLabelIds.add(label.id);
+    } else if (colors) {
+      preservedLabelIds.delete(label.id);
+    }
+  }
+
   return { trelloLabels, preservedLabelIds };
+}
+
+function addConfiguredLabelColor(
+  colorsByName: Map<string, Set<string>>,
+  name: string,
+  color: string
+): void {
+  const colors = colorsByName.get(name) ?? new Set<string>();
+
+  colors.add(color);
+  colorsByName.set(name, colors);
 }
 
 async function withTrelloRetry<T>(operation: () => Promise<T>): Promise<T> {

@@ -222,12 +222,16 @@ async function upsertTrelloLabel(input: {
     input.trackedLabelId && !input.trackedLabelId.startsWith("sync-error-")
       ? input.trackedLabelId
       : "";
+  const existingLabel =
+    existingLabelId && input.trelloLabelsById.has(existingLabelId)
+      ? input.trelloLabelsById.get(existingLabelId)
+      : findTrelloLabelByName(input.trelloLabelsById, input.name);
 
   return withTrelloRetry(() =>
-    existingLabelId && input.trelloLabelsById.has(existingLabelId)
+    existingLabel
       ? updateTrelloLabel(
           {
-            labelId: existingLabelId,
+            labelId: existingLabel.id,
             name: input.name,
             color: input.color,
           },
@@ -242,6 +246,13 @@ async function upsertTrelloLabel(input: {
           getTrelloCredentials()
         )
   );
+}
+
+function findTrelloLabelByName(
+  trelloLabelsById: Map<string, TrelloLabel>,
+  name: string
+): TrelloLabel | undefined {
+  return [...trelloLabelsById.values()].find((label) => label.name === name);
 }
 
 async function withTrelloRetry<T>(operation: () => Promise<T>): Promise<T> {

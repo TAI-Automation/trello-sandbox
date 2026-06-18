@@ -503,6 +503,7 @@ export async function listTrelloBoardLabels(
 ): Promise<TrelloLabel[]> {
   const url = trelloUrl(`/1/boards/${boardId}/labels`, credentials);
   url.searchParams.set("fields", "id,idBoard,name,color");
+  url.searchParams.set("limit", "1000");
 
   const labels = await fetchTrelloJson<TrelloLabel[]>(url);
 

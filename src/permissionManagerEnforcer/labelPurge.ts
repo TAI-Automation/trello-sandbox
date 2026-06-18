@@ -65,7 +65,6 @@ export async function purgeLegacyLabels(
       });
     }
 
-    await delay(250);
   }
 
   return {
@@ -91,57 +90,74 @@ async function getLegacyLabelPurgeContext(trelloBoardId: string) {
     listActiveProjects(),
     listActiveDepartments(),
   ]);
-  const configuredColorsByName = new Map<string, Set<string>>();
+  const configuredLabelsByKey = new Map<
+    string,
+    { name: string; color: string }
+  >();
+  const preferredLabelIdsByKey = new Map<string, string>();
+  const trelloLabelsById = new Map(
+    trelloLabels.map((label) => [label.id, label])
+  );
 
   for (const project of activeProjects) {
-    addConfiguredLabelColor(
-      configuredColorsByName,
-      project.labelText,
-      project.projectColor
+    configuredLabelsByKey.set(
+      labelKey(project.labelText, project.projectColor),
+      {
+        name: project.labelText,
+        color: project.projectColor,
+      }
     );
   }
 
   for (const department of activeDepartments) {
-    addConfiguredLabelColor(
-      configuredColorsByName,
-      department.labelText,
-      department.departmentColor
+    configuredLabelsByKey.set(
+      labelKey(department.labelText, department.departmentColor),
+      {
+        name: department.labelText,
+        color: department.departmentColor,
+      }
     );
   }
 
-  const preservedLabelIds = new Set(
-    [...projectLabels, ...departmentLabels]
-      .filter((label) => {
-        const colors = configuredColorsByName.get(label.syncedLabelText);
+  for (const label of [...projectLabels, ...departmentLabels]) {
+    const key = labelKey(label.syncedLabelText, label.syncedColor);
 
-        return colors?.has(label.syncedColor) === true;
-      })
-      .map((label) => label.trelloLabelId)
-      .filter((labelId) => !labelId.startsWith("sync-error-"))
-  );
+    if (
+      configuredLabelsByKey.has(key) &&
+      !label.trelloLabelId.startsWith("sync-error-")
+    ) {
+      preferredLabelIdsByKey.set(key, label.trelloLabelId);
+    }
+  }
 
-  for (const label of trelloLabels) {
-    const colors = configuredColorsByName.get(label.name);
+  const preservedLabelIds = new Set<string>();
 
-    if (colors?.has(label.color)) {
+  for (const [key, configuredLabel] of configuredLabelsByKey) {
+    const preferredLabel = trelloLabelsById.get(
+      preferredLabelIdsByKey.get(key) ?? ""
+    );
+    const label =
+      preferredLabel &&
+      preferredLabel.name === configuredLabel.name &&
+      preferredLabel.color === configuredLabel.color
+        ? preferredLabel
+        : trelloLabels.find(
+            (trelloLabel) =>
+              !preservedLabelIds.has(trelloLabel.id) &&
+              trelloLabel.name === configuredLabel.name &&
+              trelloLabel.color === configuredLabel.color
+          );
+
+    if (label) {
       preservedLabelIds.add(label.id);
-    } else if (colors) {
-      preservedLabelIds.delete(label.id);
     }
   }
 
   return { trelloLabels, preservedLabelIds };
 }
 
-function addConfiguredLabelColor(
-  colorsByName: Map<string, Set<string>>,
-  name: string,
-  color: string
-): void {
-  const colors = colorsByName.get(name) ?? new Set<string>();
-
-  colors.add(color);
-  colorsByName.set(name, colors);
+function labelKey(name: string, color: string): string {
+  return `${name}\u0000${color}`;
 }
 
 async function withTrelloRetry<T>(operation: () => Promise<T>): Promise<T> {

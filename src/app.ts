@@ -7,6 +7,7 @@ import { permissionManagerEnforcerRouter } from "./permissionManagerEnforcer/rou
 import { projectConfiguratorRouter } from "./projectConfigurator/routes.js";
 import { createCardRouter } from "./createCard/routes.js";
 import { labelPriorityRouter } from "./labelPriority/routes.js";
+import { labelSearchRouter } from "./labelSearch/routes.js";
 import { projectFolderRouter } from "./projectFolder/routes.js";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -30,6 +31,7 @@ export function createApp(): express.Express {
   app.use(projectConfiguratorRouter);
   app.use(createCardRouter);
   app.use(labelPriorityRouter);
+  app.use(labelSearchRouter);
   app.use(projectFolderRouter);
 
   app.get("/", (_req, res) => {

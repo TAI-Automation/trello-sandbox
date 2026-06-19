@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Label Search Sandbox Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      window.TrelloPowerUp.initialize({
+        "card-buttons": function () {
+          return [
+            {
+              text: "Search Labels",
+              callback: function (t) {
+                return t.modal({
+                  title: "Search Labels",
+                  url: "/power-up/label-search/frame.html",
+                  height: 520,
+                  fullscreen: false,
+                });
+              },
+            },
+          ];
+        },
+
+        "card-back-section": function (t) {
+          return {
+            title: "Label Search",
+            content: {
+              type: "iframe",
+              url: t.signUrl("./section.html"),
+              height: 1,
+            },
+          };
+        },
+      });
+    </script>
+  </body>
+</html>

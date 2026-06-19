@@ -14,6 +14,8 @@ type ScoredLabel = LabelSearchResult & {
 };
 
 const MAX_RESULTS = 20;
+const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+const KEYBOARD_NEIGHBORS = buildKeyboardNeighborMap();
 
 export function searchLabels(
   labels: TrelloLabel[],
@@ -122,8 +124,15 @@ function scoreLabel(label: TrelloLabel, normalizedQuery: string): ScoredLabel {
   }
 
   // Edit distance catches small typos and repeated-letter mistakes.
-  if (hasTypoCloseTokenMatch(labelSingularTokens, querySingularTokens)) {
-    return buildScoredLabel(label, normalizedName, 65, "Typo-close token match");
+  const typoMatch = typoCloseTokenMatch(labelSingularTokens, querySingularTokens);
+
+  if (typoMatch) {
+    return buildScoredLabel(
+      label,
+      normalizedName,
+      typoMatch.score,
+      typoMatch.matchedReason
+    );
   }
 
   const similarity = characterSimilarity(normalizedName, normalizedQuery);
@@ -192,17 +201,49 @@ function tokenPrefixMatch(labelTokens: string[], queryTokens: string[]): number 
       : 0;
 }
 
-function hasTypoCloseTokenMatch(
+function typoCloseTokenMatch(
   labelTokens: string[],
   queryTokens: string[]
-): boolean {
+): { score: number; matchedReason: string } | null {
   if (queryTokens.length === 0) {
-    return false;
+    return null;
   }
 
-  return queryTokens.every((queryToken) =>
-    labelTokens.some((labelToken) => areTypoClose(labelToken, queryToken))
-  );
+  let hasKeyboardCloseMatch = false;
+
+  for (const queryToken of queryTokens) {
+    const tokenMatch = labelTokens
+      .map((labelToken) => typoCloseTokenScore(labelToken, queryToken))
+      .filter((match): match is { score: number; keyboardClose: boolean } =>
+        Boolean(match)
+      )
+      .sort((left, right) => right.score - left.score)[0];
+
+    if (!tokenMatch) {
+      return null;
+    }
+
+    hasKeyboardCloseMatch = hasKeyboardCloseMatch || tokenMatch.keyboardClose;
+  }
+
+  return hasKeyboardCloseMatch
+    ? { score: 68, matchedReason: "Keyboard-close typo match" }
+    : { score: 65, matchedReason: "Typo-close token match" };
+}
+
+function typoCloseTokenScore(
+  labelToken: string,
+  queryToken: string
+): { score: number; keyboardClose: boolean } | null {
+  if (isKeyboardCloseSubstitution(labelToken, queryToken)) {
+    return { score: 68, keyboardClose: true };
+  }
+
+  if (areTypoClose(labelToken, queryToken)) {
+    return { score: 65, keyboardClose: false };
+  }
+
+  return null;
 }
 
 function areTypoClose(left: string, right: string): boolean {
@@ -217,6 +258,67 @@ function areTypoClose(left: string, right: string): boolean {
     shorterLength <= 4 ? 1 : shorterLength <= 8 ? 2 : 3;
 
   return editDistance(compactLeft, compactRight) <= allowedDistance;
+}
+
+function isKeyboardCloseSubstitution(left: string, right: string): boolean {
+  const compactLeft = collapseRepeatedLetters(left);
+  const compactRight = collapseRepeatedLetters(right);
+
+  if (compactLeft.length !== compactRight.length) {
+    return false;
+  }
+
+  let substitutionCount = 0;
+
+  for (let index = 0; index < compactLeft.length; index += 1) {
+    if (compactLeft[index] === compactRight[index]) {
+      continue;
+    }
+
+    substitutionCount += 1;
+
+    if (
+      substitutionCount > 1 ||
+      !areKeyboardNeighbors(compactLeft[index], compactRight[index])
+    ) {
+      return false;
+    }
+  }
+
+  return substitutionCount === 1;
+}
+
+function areKeyboardNeighbors(left: string, right: string): boolean {
+  return KEYBOARD_NEIGHBORS.get(left)?.has(right) ?? false;
+}
+
+function buildKeyboardNeighborMap(): Map<string, Set<string>> {
+  const positions = new Map<string, { row: number; column: number }>();
+  const neighbors = new Map<string, Set<string>>();
+
+  KEYBOARD_ROWS.forEach((row, rowIndex) => {
+    Array.from(row).forEach((character, columnIndex) => {
+      positions.set(character, { row: rowIndex, column: columnIndex });
+      neighbors.set(character, new Set());
+    });
+  });
+
+  for (const [character, position] of positions) {
+    for (const [candidate, candidatePosition] of positions) {
+      if (character === candidate) {
+        continue;
+      }
+
+      const rowDistance = Math.abs(position.row - candidatePosition.row);
+      const columnDistance = Math.abs(position.column - candidatePosition.column);
+
+      if (rowDistance <= 1 && columnDistance <= 1) {
+        neighbors.get(character)?.add(candidate);
+      }
+    }
+  }
+
+  return neighbors;
 }
 
 function editDistance(left: string, right: string): number {

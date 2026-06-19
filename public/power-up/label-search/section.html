@@ -50,6 +50,13 @@
         line-height: 1.35;
       }
 
+      .debug {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.3;
+        margin: 6px 0 0;
+      }
+
       .results {
         display: grid;
         gap: 6px;
@@ -116,6 +123,15 @@
         line-height: 1.3;
         margin: 0;
       }
+
+      .add-disabled-notice {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.3;
+        padding: 7px 8px;
+      }
     </style>
   </head>
   <body>
@@ -157,7 +173,7 @@
         t.sizeTo("body");
       }
 
-      function clearResults(message) {
+      function clearResults(message, debugText) {
         var results = document.getElementById("results");
         results.textContent = "";
 
@@ -165,6 +181,14 @@
         empty.className = "empty";
         empty.textContent = message;
         results.appendChild(empty);
+
+        if (debugText) {
+          var debug = document.createElement("span");
+          debug.className = "debug";
+          debug.textContent = debugText;
+          empty.appendChild(debug);
+        }
+
         resize();
       }
 
@@ -180,6 +204,19 @@
         if (!items.length) {
           clearResults("No matching labels found.");
           return;
+        }
+
+        if (!cardId) {
+          var notice = document.createElement("div");
+          var noticeDebug = document.createElement("p");
+
+          notice.className = "add-disabled-notice";
+          notice.textContent =
+            "Cannot add labels because current card id was not detected.";
+          noticeDebug.className = "debug";
+          noticeDebug.textContent = buildContextDebugLine();
+          notice.appendChild(noticeDebug);
+          results.appendChild(notice);
         }
 
         items.slice(0, 8).forEach(function (item) {
@@ -282,7 +319,10 @@
         var query = document.getElementById("query").value;
 
         if (!boardId) {
-          clearResults("Could not determine the current board.");
+          clearResults(
+            "Could not determine the current board.",
+            buildContextDebugLine()
+          );
           return;
         }
 
@@ -317,19 +357,89 @@
         }, 180);
       }
 
+      var contextDebug = {
+        cardKeys: [],
+        boardKeys: [],
+        contextKeys: [],
+      };
+
       async function loadContext() {
-        var board = await t.board("id");
-        var card = await t.card("id", "idLabels", "labels");
+        var resolved = await readTrelloContext();
 
-        boardId = board && board.id ? board.id : "";
-        cardId = card && card.id ? card.id : "";
-        cardLabelIds = readCardLabelIds(card);
+        boardId = resolved.boardId;
+        cardId = resolved.cardId;
+        cardLabelIds = resolved.cardLabelIds;
 
-        if (!boardId || !cardId) {
-          throw new Error("Could not determine the current card context.");
+        if (!boardId) {
+          throw new Error("Could not determine the current board context.");
         }
 
         resize();
+      }
+
+      async function readTrelloContext() {
+        var card = await readCardContext();
+        var board = await readBoardContext();
+        var context = await readPowerUpContext();
+        var resolvedBoardId =
+          readString(card && card.idBoard) ||
+          readString(board && board.id) ||
+          readString(context && context.idBoard) ||
+          readString(context && context.boardId) ||
+          readString(context && context.board);
+        var resolvedCardId =
+          readString(card && card.id) ||
+          readString(context && context.idCard) ||
+          readString(context && context.cardId) ||
+          readString(context && context.card);
+
+        contextDebug = {
+          cardKeys: listObjectKeys(card),
+          boardKeys: listObjectKeys(board),
+          contextKeys: listObjectKeys(context),
+        };
+
+        return {
+          boardId: resolvedBoardId,
+          cardId: resolvedCardId,
+          cardLabelIds: readCardLabelIds(card),
+        };
+      }
+
+      async function readCardContext() {
+        try {
+          return await t.card("id", "idBoard", "idLabels", "name");
+        } catch (_error) {
+          try {
+            return await t.card("id", "idBoard", "name");
+          } catch (_fallbackError) {
+            try {
+              return await t.card("id");
+            } catch (_idError) {
+              return null;
+            }
+          }
+        }
+      }
+
+      async function readBoardContext() {
+        try {
+          return await t.board("id", "name");
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      async function readPowerUpContext() {
+        if (typeof t.getContext !== "function") {
+          return null;
+        }
+
+        try {
+          return await t.getContext();
+        } catch (_error) {
+          return null;
+        }
       }
 
       function readCardLabelIds(card) {
@@ -348,12 +458,41 @@
         return [];
       }
 
+      function readString(value) {
+        return typeof value === "string" && value.trim() ? value.trim() : "";
+      }
+
+      function listObjectKeys(value) {
+        return value && typeof value === "object" && !Array.isArray(value)
+          ? Object.keys(value).sort()
+          : [];
+      }
+
+      function buildContextDebugLine() {
+        return (
+          "Context keys: card[" +
+          formatKeys(contextDebug.cardKeys) +
+          "] board[" +
+          formatKeys(contextDebug.boardKeys) +
+          "] getContext[" +
+          formatKeys(contextDebug.contextKeys) +
+          "]"
+        );
+      }
+
+      function formatKeys(keys) {
+        return keys.length ? keys.join(",") : "none";
+      }
+
       document.getElementById("query").addEventListener("input", scheduleSearch);
 
       t.render(function () {
         return loadContext()
           .catch(function () {
-            clearResults("Close and reopen this card to load label search.");
+            clearResults(
+              "Close and reopen this card to load label search.",
+              buildContextDebugLine()
+            );
           })
           .then(resize);
       });

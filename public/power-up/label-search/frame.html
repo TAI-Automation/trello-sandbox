@@ -73,6 +73,13 @@
         line-height: 1.4;
       }
 
+      .debug {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+        margin-top: 6px;
+      }
+
       .results {
         display: grid;
         gap: 8px;
@@ -137,6 +144,15 @@
         line-height: 1.35;
       }
 
+      .add-disabled-notice {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+        padding: 8px 10px;
+      }
+
       .empty {
         border: 1px solid var(--border);
         border-radius: 6px;
@@ -192,13 +208,20 @@
         document.getElementById("status").textContent = text;
       }
 
-      function clearResults(message) {
+      function clearResults(message, debugText) {
         var results = document.getElementById("results");
         results.textContent = "";
         var empty = document.createElement("div");
         empty.className = "empty";
         empty.textContent = message;
         results.appendChild(empty);
+
+        if (debugText) {
+          var debug = document.createElement("p");
+          debug.className = "debug";
+          debug.textContent = debugText;
+          empty.appendChild(debug);
+        }
       }
 
       function renderResults(items, query) {
@@ -213,6 +236,19 @@
         if (!items.length) {
           clearResults("No matching labels found.");
           return;
+        }
+
+        if (!cardId) {
+          var notice = document.createElement("div");
+          var noticeDebug = document.createElement("p");
+
+          notice.className = "add-disabled-notice";
+          notice.textContent =
+            "Cannot add labels because current card id was not detected.";
+          noticeDebug.className = "debug";
+          noticeDebug.textContent = buildContextDebugLine();
+          notice.appendChild(noticeDebug);
+          results.appendChild(notice);
         }
 
         items.forEach(function (item) {
@@ -311,7 +347,10 @@
         var query = document.getElementById("query").value;
 
         if (!boardId) {
-          clearResults("Could not determine the current board.");
+          clearResults(
+            "Could not determine the current board.",
+            buildContextDebugLine()
+          );
           return;
         }
 
@@ -351,19 +390,89 @@
         }, 180);
       }
 
-      async function loadContext() {
-        var board = await t.board("id");
-        var card = await t.card("id", "idLabels", "labels");
+      var contextDebug = {
+        cardKeys: [],
+        boardKeys: [],
+        contextKeys: [],
+      };
 
-        boardId = board && board.id ? board.id : "";
-        cardId = card && card.id ? card.id : "";
-        cardLabelIds = readCardLabelIds(card);
+      async function loadContext() {
+        var resolved = await readTrelloContext();
+
+        boardId = resolved.boardId;
+        cardId = resolved.cardId;
+        cardLabelIds = resolved.cardLabelIds;
 
         if (!boardId) {
           throw new Error("Could not determine the current Trello board.");
         }
 
         setStatus(cardId ? "Card context loaded." : "Board context loaded.");
+      }
+
+      async function readTrelloContext() {
+        var card = await readCardContext();
+        var board = await readBoardContext();
+        var context = await readPowerUpContext();
+        var resolvedBoardId =
+          readString(card && card.idBoard) ||
+          readString(board && board.id) ||
+          readString(context && context.idBoard) ||
+          readString(context && context.boardId) ||
+          readString(context && context.board);
+        var resolvedCardId =
+          readString(card && card.id) ||
+          readString(context && context.idCard) ||
+          readString(context && context.cardId) ||
+          readString(context && context.card);
+
+        contextDebug = {
+          cardKeys: listObjectKeys(card),
+          boardKeys: listObjectKeys(board),
+          contextKeys: listObjectKeys(context),
+        };
+
+        return {
+          boardId: resolvedBoardId,
+          cardId: resolvedCardId,
+          cardLabelIds: readCardLabelIds(card),
+        };
+      }
+
+      async function readCardContext() {
+        try {
+          return await t.card("id", "idBoard", "idLabels", "name");
+        } catch (_error) {
+          try {
+            return await t.card("id", "idBoard", "name");
+          } catch (_fallbackError) {
+            try {
+              return await t.card("id");
+            } catch (_idError) {
+              return null;
+            }
+          }
+        }
+      }
+
+      async function readBoardContext() {
+        try {
+          return await t.board("id", "name");
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      async function readPowerUpContext() {
+        if (typeof t.getContext !== "function") {
+          return null;
+        }
+
+        try {
+          return await t.getContext();
+        } catch (_error) {
+          return null;
+        }
       }
 
       function readCardLabelIds(card) {
@@ -382,6 +491,32 @@
         return [];
       }
 
+      function readString(value) {
+        return typeof value === "string" && value.trim() ? value.trim() : "";
+      }
+
+      function listObjectKeys(value) {
+        return value && typeof value === "object" && !Array.isArray(value)
+          ? Object.keys(value).sort()
+          : [];
+      }
+
+      function buildContextDebugLine() {
+        return (
+          "Context keys: card[" +
+          formatKeys(contextDebug.cardKeys) +
+          "] board[" +
+          formatKeys(contextDebug.boardKeys) +
+          "] getContext[" +
+          formatKeys(contextDebug.contextKeys) +
+          "]"
+        );
+      }
+
+      function formatKeys(keys) {
+        return keys.length ? keys.join(",") : "none";
+      }
+
       document.getElementById("query").addEventListener("input", scheduleSearch);
 
       loadContext()
@@ -390,7 +525,10 @@
         })
         .catch(function (error) {
           setStatus(error.message || "Could not load Trello context.");
-          clearResults("Close this window and try again from a card.");
+          clearResults(
+            "Close this window and try again from a card.",
+            buildContextDebugLine()
+          );
         });
     </script>
   </body>

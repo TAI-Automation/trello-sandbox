@@ -9,10 +9,10 @@ Label Search Sandbox is a sandbox-only Trello Power-Up MVP for searching labels 
 - Search actual Trello board labels directly from Trello.
 - Use `TRELLO_KEY` and `TRELLO_TOKEN` server-side through the existing credential helper.
 - Rank labels with local fuzzy matching.
-- Return read-only search results to the modal.
+- Return search results to the modal and card-back section.
+- Add an existing Trello label to the current card only after an explicit user click.
 - Do not use Neon as the primary label source.
 - Do not classify project or department labels.
-- Do not apply labels to cards.
 - Do not create, update, delete, or sync labels.
 - Do not write to Neon.
 
@@ -29,6 +29,7 @@ Label Search Sandbox is a sandbox-only Trello Power-Up MVP for searching labels 
 ## Routes Added
 
 - `GET /api/label-search/search?boardId=<boardId>&q=<query>`
+- `POST /api/label-search/apply`
 
 The route reads labels from Trello for the supplied board id and returns up to 20 ranked results:
 
@@ -37,6 +38,10 @@ The route reads labels from Trello for the supplied board id and returns up to 2
 - `color`
 - `score`
 - `matchedReason`
+
+The apply route is the first write action in this sandbox feature. It accepts `cardId`, `boardId`, and `trelloLabelId`, verifies the requested Trello label exists on the supplied board, and adds that existing label to the current Trello card after an explicit user click.
+
+The apply route does not create labels, delete labels, update label names or colors, sync labels, or write to Neon.
 
 ## Manual Trello Admin Registration Steps
 
@@ -61,13 +66,15 @@ The route reads labels from Trello for the supplied board id and returns up to 2
 3. In Trello, register the local or tunneled connector URL for the sandbox Power-Up.
 4. Open a Trello card detail page on a board accessible to the configured token.
 5. Click `Search Labels`.
-6. Type a label query and confirm matching labels appear with name, color, score, and reason.
+6. Type a label query and confirm matching labels appear with name, color, score, reason, and an Add label button.
+7. Click Add label and confirm the existing Trello label is added to the current card.
+8. Search the same label again and confirm it is shown as already on the card.
 
 ## Future Phases
 
 ### Phase 1: Fuzzy Search Trello Board Labels
 
-Search current-board Trello labels directly, rank candidates, and show read-only results in the card modal.
+Search current-board Trello labels directly and rank candidates in the card modal.
 
 ### Phase 1.5: Read-Only Neon Compare
 
@@ -75,7 +82,7 @@ Compare Trello labels to Neon records for tracked, untracked, duplicate, project
 
 ### Phase 2: Apply Label With Explicit User Click
 
-Add a user-triggered apply action that calls Trello only after an explicit click.
+Add a user-triggered apply action that calls Trello only after an explicit click. This is now implemented for existing board labels only.
 
 ### Phase 3: AI Hint Using Fuzzy Top Candidates Only
 

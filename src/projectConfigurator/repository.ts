@@ -438,6 +438,35 @@ export async function listProjectManagers(
   return result.rows.map(mapProjectManager);
 }
 
+export async function isProjectManagerForBoardProjectLabel(input: {
+  trelloBoardId: string;
+  trelloMemberId: string;
+  trelloLabelIds: string[];
+}): Promise<boolean> {
+  if (input.trelloLabelIds.length === 0) {
+    return false;
+  }
+
+  const result = await getDbPool().query<{ exists: boolean }>(
+    `
+      select exists (
+        select 1
+        from board_project_labels bpl
+        join project_managers pm on pm.project_id = bpl.project_id
+        join projects p on p.id = bpl.project_id
+        where bpl.trello_board_id = $1
+          and bpl.trello_label_id = any($2::text[])
+          and bpl.sync_status = 'synced'
+          and pm.trello_member_id = $3
+          and p.archived_at is null
+      )
+    `,
+    [input.trelloBoardId, input.trelloLabelIds, input.trelloMemberId]
+  );
+
+  return result.rows[0]?.exists === true;
+}
+
 export async function addProjectManager(input: {
   projectId: string;
   trelloMemberId: string;

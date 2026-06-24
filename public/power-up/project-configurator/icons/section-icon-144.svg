@@ -1,7 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144" role="img" aria-label="Project Configurator">
-  <path d="M54 70 72 45l24 27-24 27z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"/>
-  <circle cx="52" cy="70" r="13" fill="#000"/>
-  <circle cx="72" cy="45" r="13" fill="#000"/>
-  <circle cx="96" cy="72" r="13" fill="#000"/>
-  <circle cx="72" cy="99" r="13" fill="#000"/>
+  <path d="M14 111V35c0-7 6-13 13-13h31c6 0 10 3 13 8l13 23c2 4 6 6 11 6h30c7 0 12 5 12 12v7" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"/>
+  <path d="M15 111 31 74c2-6 8-9 15-9h80c8 0 12 6 10 14l-13 34c-3 8-9 11-17 11H24c-8 0-13-6-9-13z" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"/>
 </svg>

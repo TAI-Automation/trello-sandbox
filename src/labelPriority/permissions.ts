@@ -2,6 +2,7 @@ import {
   resolveProjectConfiguratorViewer,
   type ProjectConfiguratorViewer,
 } from "../projectConfigurator/permissions.js";
+import { isProjectManagerForBoardProjectLabel } from "../projectConfigurator/repository.js";
 import { fetchTrelloCard, type TrelloCard } from "../trello/api.js";
 import { getTrelloCredentials } from "../projectConfigurator/permissions.js";
 
@@ -20,12 +21,20 @@ export async function resolveLabelPriorityPermission(input: {
     resolveProjectConfiguratorViewer(input.trelloMemberId),
     fetchTrelloCard(input.trelloCardId, getTrelloCredentials()),
   ]);
-  const canModify = viewer.role === "admin";
+  const canModify =
+    viewer.role === "admin" ||
+    (await isProjectManagerForBoardProjectLabel({
+      trelloBoardId: card.idBoard,
+      trelloMemberId: input.trelloMemberId,
+      trelloLabelIds: card.idLabels,
+    }));
 
   return {
     viewer,
     canModify,
-    reason: canModify ? null : "Only Workspace admins can change priorities.",
+    reason: canModify
+      ? null
+      : "Only Workspace admins or the matching project managers can change priorities.",
     card,
   };
 }

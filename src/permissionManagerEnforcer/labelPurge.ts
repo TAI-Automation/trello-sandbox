@@ -1,9 +1,9 @@
 import {
   deleteTrelloLabel,
   listTrelloBoardLabels,
-  TrelloApiError,
 } from "../trello/api.js";
 import { getTrelloCredentials } from "../projectConfigurator/permissions.js";
+import { retryTrelloRequest } from "../shared/trelloRetry.js";
 import {
   listActiveDepartments,
   listActiveProjects,
@@ -51,7 +51,7 @@ export async function purgeLegacyLabels(
 
   for (const label of purgeableLabels) {
     try {
-      await withTrelloRetry(() =>
+      await retryTrelloRequest(() =>
         deleteTrelloLabel(label.id, getTrelloCredentials())
       );
       deleted += 1;
@@ -158,37 +158,6 @@ async function getLegacyLabelPurgeContext(trelloBoardId: string) {
 
 function labelKey(name: string, color: string): string {
   return `${name}\u0000${color}`;
-}
-
-async function withTrelloRetry<T>(operation: () => Promise<T>): Promise<T> {
-  const delays = [700, 1500, 3000];
-
-  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (attempt === delays.length || !isRetryableTrelloError(error)) {
-        throw error;
-      }
-
-      await delay(delays[attempt] ?? 0);
-    }
-  }
-
-  return operation();
-}
-
-function isRetryableTrelloError(error: unknown): boolean {
-  return (
-    error instanceof TrelloApiError &&
-    (error.status === 429 || (error.status >= 500 && error.status < 600))
-  );
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function getErrorMessage(error: unknown): string {

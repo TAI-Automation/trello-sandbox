@@ -416,6 +416,7 @@
       var currentMemberId = "";
       var currentBoardId = "";
       var currentState = null;
+      var labelSyncStatus = null;
       var pmFieldApplyStatus = null;
       var t = window.TrelloPowerUp.iframe();
       var colorHex = {
@@ -1032,30 +1033,85 @@
 
       async function synchronizeLabels(button) {
         showMessage("", "");
+        labelSyncStatus = null;
 
         try {
           button.disabled = true;
           button.textContent = "Synchronizing...";
-          var result = await apiRequest("/api/project-configurator/labels/sync", {
+          await apiRequest("/api/project-configurator/labels/sync", {
             trelloBoardId: currentBoardId,
           });
-          var sync = result.labelSync;
-          var text =
-            "Synchronized " +
-            sync.synced +
-            " of " +
-            sync.attempted +
-            " labels across " +
-            sync.boards +
-            " known boards.";
-
-          showMessage(text, sync.failed > 0 ? "error" : "success");
+          await pollLabelSync(button);
         } catch (error) {
           showMessage(error.message || error, "error");
-        } finally {
           button.disabled = false;
           button.textContent = "Synchronize labels";
         }
+      }
+
+      async function pollLabelSync(button) {
+        var result = await apiRequest(
+          "/api/project-configurator/labels/sync/status",
+          { trelloBoardId: currentBoardId }
+        );
+        var sync = result.labelSync || labelSyncStatus || {};
+
+        if (result.labelSync) {
+          labelSyncStatus = result.labelSync;
+        }
+
+        if (!sync.done) {
+          showMessage(describeLabelSyncStatus(sync), "success");
+          window.setTimeout(function () {
+            pollLabelSync(button).catch(function (error) {
+              showMessage(error.message || error, "error");
+              button.disabled = false;
+              button.textContent = "Synchronize labels";
+            });
+          }, 1200);
+          return;
+        }
+
+        showMessage(
+          "Synchronized " +
+            (sync.synced || 0) +
+            " of " +
+            (sync.attempted || 0) +
+            " labels across " +
+            (sync.boards || 0) +
+            " known board" +
+            ((sync.boards || 0) === 1 ? "" : "s") +
+            ((sync.failed || 0) > 0 ? "; " + sync.failed + " failed." : "."),
+          (sync.failed || 0) > 0 || sync.error ? "error" : "success"
+        );
+        button.disabled = false;
+        button.textContent = "Synchronize labels";
+      }
+
+      function describeLabelSyncStatus(sync) {
+        var processed = sync.processed || 0;
+        var attempted = sync.attempted || 0;
+        var boardText = sync.currentBoardName
+          ? " on " + sync.currentBoardName
+          : "";
+
+        if (attempted === 0) {
+          return "Preparing label synchronization...";
+        }
+
+        return (
+          "Synchronizing labels" +
+          boardText +
+          ": " +
+          processed +
+          " of " +
+          attempted +
+          " processed, " +
+          (sync.synced || 0) +
+          " synced" +
+          ((sync.failed || 0) > 0 ? ", " + sync.failed + " failed" : "") +
+          "."
+        );
       }
 
       async function applyPmFields(button) {

@@ -10,9 +10,9 @@ import {
   clearTrelloCardCustomField,
   listTrelloBoardCards,
   setTrelloCardTextCustomField,
-  TrelloApiError,
   type TrelloCard,
 } from "../../trello/api.js";
+import { retryTrelloRequest } from "../trelloRetry.js";
 import { ensureProjectManagerCustomField } from "./customField.js";
 import { formatProjectManagers } from "./format.js";
 
@@ -200,7 +200,7 @@ async function processProjectManagerFieldApplyChunk(
 
   await runWithConcurrency(chunk, APPLY_CONCURRENCY, async (update) => {
     try {
-      await retryRateLimited(async () => {
+      await retryTrelloRequest(async () => {
         if (update.value) {
           await setTrelloCardTextCustomField(
             {
@@ -219,6 +219,9 @@ async function processProjectManagerFieldApplyChunk(
             credentials
           );
         }
+      }, {
+        delays: [1000, 2000, 3000, 4000],
+        isRetryable: isTrelloRateLimitError,
       });
       updated += 1;
     } catch (error) {
@@ -565,25 +568,8 @@ async function runWithConcurrency<T>(
   );
 }
 
-async function retryRateLimited(action: () => Promise<void>): Promise<void> {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      await action();
-      return;
-    } catch (error) {
-      if (!(error instanceof TrelloApiError) || error.status !== 429) {
-        throw error;
-      }
-
-      await sleep(1000 * (attempt + 1));
-    }
-  }
-
-  await action();
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function isTrelloRateLimitError(error: unknown): boolean {
+  return error instanceof Error && "status" in error && error.status === 429;
 }
 
 function getErrorMessage(error: unknown): string {

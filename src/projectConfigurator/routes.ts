@@ -22,7 +22,7 @@ import {
   updateProjectColor,
   updateProjectName,
 } from "./repository.js";
-import { syncAllConfiguredLabels } from "./labelSync.js";
+import { getLabelSyncJob, startLabelSyncJob } from "./labelSync.js";
 import { resolveProjectConfiguratorViewer } from "./permissions.js";
 import { getProjectConfiguratorState } from "./state.js";
 
@@ -53,7 +53,21 @@ projectConfiguratorRouter.post(
       readRequiredString(req.body, "trelloMemberId");
       const trelloBoardId = readRequiredString(req.body, "trelloBoardId");
 
-      res.json({ labelSync: await syncAllConfiguredLabels(trelloBoardId) });
+      res.status(202).json({ labelSync: await startLabelSyncJob(trelloBoardId) });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.post(
+  "/api/project-configurator/labels/sync/status",
+  async (req, res, next) => {
+    try {
+      readRequiredString(req.body, "trelloMemberId");
+      readRequiredString(req.body, "trelloBoardId");
+
+      res.json({ labelSync: await getLabelSyncJob() });
     } catch (error) {
       next(error);
     }

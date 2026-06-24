@@ -2,16 +2,20 @@ import { getDbPool } from "../db/client.js";
 import { retryTrelloRequest } from "../shared/trelloRetry.js";
 import {
   createTrelloLabel,
+  deleteTrelloLabel,
+  isTrelloNotFoundError,
   listTrelloBoardLabels,
   updateTrelloLabel,
   type TrelloLabel,
 } from "../trello/api.js";
 import { getTrelloCredentials } from "./permissions.js";
 import {
+  deleteProject,
   listActiveDepartments,
   listActiveProjects,
   listBoardDepartmentLabels,
   listBoardProjectLabels,
+  listBoardProjectLabelsForProject,
   listLabelSyncBoards,
   markBoardDepartmentLabelError,
   markBoardDepartmentLabelSynced,
@@ -42,16 +46,40 @@ export type LabelSyncJobResult = LabelSyncResult & {
   finishedAt: string | null;
 };
 
+export type ProjectLabelDeletionJobResult = {
+  phase: "starting" | "syncing" | "done";
+  boards: number;
+  attempted: number;
+  processed: number;
+  deleted: number;
+  failed: number;
+  currentBoardName: string | null;
+  done: boolean;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
 type LabelSyncPhase = LabelSyncJobResult["phase"];
 
-type LabelSyncTask = {
-  boardId: string;
-  boardName: string;
-  kind: "project" | "department";
-  entityId: string;
-  name: string;
-  color: string;
-};
+type LabelSyncTask =
+  | {
+      boardId: string;
+      boardName: string;
+      kind: "project" | "department";
+      entityId: string;
+      name: string;
+      color: string;
+    }
+  | {
+      boardId: string;
+      boardName: string;
+      kind: "delete-project-label";
+      entityId: string;
+      labelId: string;
+      name: string;
+      color: string;
+    };
 
 type LabelSyncJobRow = {
   job_key: string;
@@ -77,18 +105,20 @@ type LabelSyncBoardContext = {
 };
 
 const LABEL_SYNC_JOB_KEY = "configured-labels";
+const PROJECT_LABEL_DELETION_JOB_PREFIX = "delete-project-labels:";
 const LABEL_SYNC_CHUNK_SIZE = 12;
 
 export async function startLabelSyncJob(
   currentBoardId?: string
 ): Promise<LabelSyncJobResult> {
-  const existing = await getStoredLabelSyncJob();
+  const existing = await getStoredLabelSyncJob(LABEL_SYNC_JOB_KEY);
 
   if (existing && !existing.done) {
     return mapLabelSyncJob(existing);
   }
 
   await upsertLabelSyncJob({
+    jobKey: LABEL_SYNC_JOB_KEY,
     currentBoardId: currentBoardId ?? null,
     phase: "starting",
     totalBoards: 0,
@@ -106,10 +136,10 @@ export async function startLabelSyncJob(
   try {
     await initializeLabelSyncJob(currentBoardId);
   } catch (error) {
-    await markLabelSyncJobFailed(getErrorMessage(error));
+    await markLabelSyncJobFailed(LABEL_SYNC_JOB_KEY, getErrorMessage(error));
   }
 
-  const job = await getStoredLabelSyncJob();
+  const job = await getStoredLabelSyncJob(LABEL_SYNC_JOB_KEY);
 
   if (!job) {
     throw new Error("Label sync job was not created.");
@@ -119,7 +149,7 @@ export async function startLabelSyncJob(
 }
 
 export async function getLabelSyncJob(): Promise<LabelSyncJobResult | null> {
-  const job = await getStoredLabelSyncJob();
+  const job = await getStoredLabelSyncJob(LABEL_SYNC_JOB_KEY);
 
   if (!job) {
     return null;
@@ -127,11 +157,71 @@ export async function getLabelSyncJob(): Promise<LabelSyncJobResult | null> {
 
   if (!job.done && job.phase === "syncing") {
     await processLabelSyncChunk(job);
-    const updatedJob = await getStoredLabelSyncJob();
+    const updatedJob = await getStoredLabelSyncJob(LABEL_SYNC_JOB_KEY);
     return updatedJob ? mapLabelSyncJob(updatedJob) : null;
   }
 
   return mapLabelSyncJob(job);
+}
+
+export async function startProjectLabelDeletionJob(
+  projectId: string,
+  currentBoardId?: string
+): Promise<ProjectLabelDeletionJobResult> {
+  const jobKey = projectLabelDeletionJobKey(projectId);
+  const existing = await getStoredLabelSyncJob(jobKey);
+
+  if (existing && !existing.done) {
+    return mapProjectLabelDeletionJob(existing);
+  }
+
+  await upsertLabelSyncJob({
+    jobKey,
+    currentBoardId: currentBoardId ?? null,
+    phase: "starting",
+    totalBoards: 0,
+    totalLabels: 0,
+    synced: 0,
+    failed: 0,
+    done: false,
+    error: null,
+    tasks: [],
+    nextTaskIndex: 0,
+    boardFailures: {},
+    finishedAt: null,
+  });
+
+  try {
+    await initializeProjectLabelDeletionJob(projectId, currentBoardId);
+  } catch (error) {
+    await markLabelSyncJobFailed(jobKey, getErrorMessage(error));
+  }
+
+  const job = await getStoredLabelSyncJob(jobKey);
+
+  if (!job) {
+    throw new Error("Project label deletion job was not created.");
+  }
+
+  return mapProjectLabelDeletionJob(job);
+}
+
+export async function getProjectLabelDeletionJob(
+  projectId: string
+): Promise<ProjectLabelDeletionJobResult | null> {
+  const job = await getStoredLabelSyncJob(projectLabelDeletionJobKey(projectId));
+
+  if (!job) {
+    return null;
+  }
+
+  if (!job.done && job.phase === "syncing") {
+    await processProjectLabelDeletionChunk(job);
+    const updatedJob = await getStoredLabelSyncJob(job.job_key);
+    return updatedJob ? mapProjectLabelDeletionJob(updatedJob) : null;
+  }
+
+  return mapProjectLabelDeletionJob(job);
 }
 
 export async function syncProjectLabelsForBoard(
@@ -178,6 +268,7 @@ async function initializeLabelSyncJob(
   const done = tasks.length === 0;
 
   await upsertLabelSyncJob({
+    jobKey: LABEL_SYNC_JOB_KEY,
     currentBoardId: currentBoardId ?? null,
     phase: done ? "done" : "syncing",
     totalBoards: boards.length,
@@ -204,6 +295,52 @@ async function initializeLabelSyncJob(
   }
 }
 
+async function initializeProjectLabelDeletionJob(
+  projectId: string,
+  currentBoardId?: string
+): Promise<void> {
+  const labels = await listBoardProjectLabelsForProject(projectId, currentBoardId);
+  const tasks = labels
+    .filter((label) => !label.trelloLabelId.startsWith("sync-error-"))
+    .map(
+      (label): LabelSyncTask => ({
+        boardId: label.trelloBoardId,
+        boardName: label.boardName,
+        kind: "delete-project-label",
+        entityId: projectId,
+        labelId: label.trelloLabelId,
+        name: label.syncedLabelText,
+        color: label.syncedColor,
+      })
+    );
+  const boardIds = new Set(labels.map((label) => label.trelloBoardId));
+  const done = tasks.length === 0;
+
+  if (done) {
+    const deleted = await deleteProject(projectId);
+
+    if (!deleted) {
+      throw new Error("Project was not found.");
+    }
+  }
+
+  await upsertLabelSyncJob({
+    jobKey: projectLabelDeletionJobKey(projectId),
+    currentBoardId: currentBoardId ?? null,
+    phase: done ? "done" : "syncing",
+    totalBoards: boardIds.size,
+    totalLabels: tasks.length,
+    synced: 0,
+    failed: 0,
+    done,
+    error: null,
+    tasks,
+    nextTaskIndex: 0,
+    boardFailures: {},
+    finishedAt: done ? new Date() : null,
+  });
+}
+
 async function processLabelSyncChunk(job: LabelSyncJobRow): Promise<void> {
   const chunk = job.tasks.slice(
     job.next_task_index,
@@ -211,7 +348,7 @@ async function processLabelSyncChunk(job: LabelSyncJobRow): Promise<void> {
   );
 
   if (chunk.length === 0) {
-    await finishLabelSyncJob();
+    await finishLabelSyncJob(job.job_key);
     return;
   }
 
@@ -226,12 +363,16 @@ async function processLabelSyncChunk(job: LabelSyncJobRow): Promise<void> {
         contexts.get(task.boardId) ?? (await getLabelSyncBoardContext(task.boardId));
 
       contexts.set(task.boardId, context);
-      await syncLabelTask(task, context);
+      if (task.kind !== "delete-project-label") {
+        await syncLabelTask(task, context);
+      }
       synced += 1;
     } catch (error) {
       failed += 1;
       boardFailures[task.boardId] = (boardFailures[task.boardId] ?? 0) + 1;
-      await markLabelTaskError(task, getErrorMessage(error)).catch(() => undefined);
+      if (task.kind !== "delete-project-label") {
+        await markLabelTaskError(task, getErrorMessage(error)).catch(() => undefined);
+      }
       console.log("project-configurator label sync failed", {
         trelloBoardId: task.boardId,
         kind: task.kind,
@@ -247,7 +388,70 @@ async function processLabelSyncChunk(job: LabelSyncJobRow): Promise<void> {
 
   await markCompletedBoards(job.tasks, job.next_task_index, nextTaskIndex, boardFailures);
   await updateLabelSyncJobProgress({
+    jobKey: job.job_key,
     synced,
+    failed,
+    nextTaskIndex,
+    boardFailures,
+    done,
+  });
+}
+
+async function processProjectLabelDeletionChunk(
+  job: LabelSyncJobRow
+): Promise<void> {
+  const chunk = job.tasks.slice(
+    job.next_task_index,
+    job.next_task_index + LABEL_SYNC_CHUNK_SIZE
+  );
+
+  if (chunk.length === 0) {
+    await finishLabelSyncJob(job.job_key);
+    return;
+  }
+
+  const boardFailures = { ...job.board_failures };
+  let deleted = 0;
+  let failed = 0;
+
+  for (const task of chunk) {
+    if (task.kind !== "delete-project-label") {
+      continue;
+    }
+
+    try {
+      await deleteProjectLabelTask(task);
+      deleted += 1;
+    } catch (error) {
+      failed += 1;
+      boardFailures[task.boardId] = (boardFailures[task.boardId] ?? 0) + 1;
+      console.log("project-configurator project label deletion failed", {
+        trelloBoardId: task.boardId,
+        projectId: task.entityId,
+        trelloLabelId: task.labelId,
+        labelName: task.name,
+        error: getErrorMessage(error),
+      });
+    }
+  }
+
+  const nextTaskIndex = job.next_task_index + chunk.length;
+  const done = nextTaskIndex >= job.tasks.length;
+  const totalFailed = job.failed + failed;
+
+  if (done && totalFailed === 0) {
+    const projectId = getProjectIdFromDeletionJobKey(job.job_key);
+    const projectDeleted = projectId ? await deleteProject(projectId) : false;
+
+    if (!projectDeleted) {
+      await markLabelSyncJobFailed(job.job_key, "Project was not found.");
+      return;
+    }
+  }
+
+  await updateLabelSyncJobProgress({
+    jobKey: job.job_key,
+    synced: deleted,
     failed,
     nextTaskIndex,
     boardFailures,
@@ -277,7 +481,7 @@ async function getLabelSyncBoardContext(
 }
 
 async function syncLabelTask(
-  task: LabelSyncTask,
+  task: Exclude<LabelSyncTask, { kind: "delete-project-label" }>,
   context: LabelSyncBoardContext
 ): Promise<void> {
   if (task.kind === "project") {
@@ -303,7 +507,7 @@ async function syncLabelTask(
 }
 
 async function markLabelTaskError(
-  task: LabelSyncTask,
+  task: Exclude<LabelSyncTask, { kind: "delete-project-label" }>,
   error: string
 ): Promise<void> {
   if (task.kind === "project") {
@@ -324,6 +528,22 @@ async function markLabelTaskError(
     syncedColor: task.color,
     error,
   });
+}
+
+async function deleteProjectLabelTask(
+  task: Extract<LabelSyncTask, { kind: "delete-project-label" }>
+): Promise<void> {
+  try {
+    await retryTrelloRequest(() =>
+      deleteTrelloLabel(task.labelId, getTrelloCredentials())
+    );
+  } catch (error) {
+    if (isTrelloNotFoundError(error)) {
+      return;
+    }
+
+    throw error;
+  }
 }
 
 async function markCompletedBoards(
@@ -524,6 +744,7 @@ function findTrelloLabelByName(
 }
 
 async function upsertLabelSyncJob(input: {
+  jobKey: string;
   currentBoardId: string | null;
   phase: LabelSyncPhase;
   totalBoards: number;
@@ -574,7 +795,7 @@ async function upsertLabelSyncJob(input: {
           updated_at = now()
     `,
     [
-      LABEL_SYNC_JOB_KEY,
+      input.jobKey,
       input.currentBoardId,
       input.phase,
       input.totalBoards,
@@ -592,6 +813,7 @@ async function upsertLabelSyncJob(input: {
 }
 
 async function updateLabelSyncJobProgress(input: {
+  jobKey: string;
   synced: number;
   failed: number;
   nextTaskIndex: number;
@@ -612,7 +834,7 @@ async function updateLabelSyncJobProgress(input: {
       where job_key = $1
     `,
     [
-      LABEL_SYNC_JOB_KEY,
+      input.jobKey,
       input.synced,
       input.failed,
       input.nextTaskIndex,
@@ -622,7 +844,10 @@ async function updateLabelSyncJobProgress(input: {
   );
 }
 
-async function markLabelSyncJobFailed(error: string): Promise<void> {
+async function markLabelSyncJobFailed(
+  jobKey: string,
+  error: string
+): Promise<void> {
   await getDbPool().query(
     `
       update label_sync_jobs
@@ -633,11 +858,11 @@ async function markLabelSyncJobFailed(error: string): Promise<void> {
           updated_at = now()
       where job_key = $1
     `,
-    [LABEL_SYNC_JOB_KEY, error]
+    [jobKey, error]
   );
 }
 
-async function finishLabelSyncJob(): Promise<void> {
+async function finishLabelSyncJob(jobKey: string): Promise<void> {
   await getDbPool().query(
     `
       update label_sync_jobs
@@ -647,11 +872,13 @@ async function finishLabelSyncJob(): Promise<void> {
           updated_at = now()
       where job_key = $1
     `,
-    [LABEL_SYNC_JOB_KEY]
+    [jobKey]
   );
 }
 
-async function getStoredLabelSyncJob(): Promise<LabelSyncJobRow | null> {
+async function getStoredLabelSyncJob(
+  jobKey: string
+): Promise<LabelSyncJobRow | null> {
   const result = await getDbPool().query<LabelSyncJobRow>(
     `
       select
@@ -672,7 +899,7 @@ async function getStoredLabelSyncJob(): Promise<LabelSyncJobRow | null> {
       from label_sync_jobs
       where job_key = $1
     `,
-    [LABEL_SYNC_JOB_KEY]
+    [jobKey]
   );
 
   return result.rows[0] ?? null;
@@ -694,6 +921,36 @@ function mapLabelSyncJob(row: LabelSyncJobRow): LabelSyncJobResult {
     startedAt: row.started_at.toISOString(),
     finishedAt: row.finished_at ? row.finished_at.toISOString() : null,
   };
+}
+
+function mapProjectLabelDeletionJob(
+  row: LabelSyncJobRow
+): ProjectLabelDeletionJobResult {
+  const currentTask = row.tasks[row.next_task_index] ?? null;
+
+  return {
+    phase: row.phase,
+    boards: row.total_boards,
+    attempted: row.total_labels,
+    processed: row.next_task_index,
+    deleted: row.synced,
+    failed: row.failed,
+    currentBoardName: currentTask?.boardName ?? null,
+    done: row.done,
+    error: row.error,
+    startedAt: row.started_at.toISOString(),
+    finishedAt: row.finished_at ? row.finished_at.toISOString() : null,
+  };
+}
+
+function projectLabelDeletionJobKey(projectId: string): string {
+  return `${PROJECT_LABEL_DELETION_JOB_PREFIX}${projectId}`;
+}
+
+function getProjectIdFromDeletionJobKey(jobKey: string): string | null {
+  return jobKey.startsWith(PROJECT_LABEL_DELETION_JOB_PREFIX)
+    ? jobKey.slice(PROJECT_LABEL_DELETION_JOB_PREFIX.length)
+    : null;
 }
 
 function getErrorMessage(error: unknown): string {

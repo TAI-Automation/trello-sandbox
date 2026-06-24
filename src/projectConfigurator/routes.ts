@@ -14,7 +14,6 @@ import {
   createDepartment,
   createProject,
   deleteDepartment,
-  deleteProject,
   getProject,
   removeProjectManager,
   updateDepartmentColor,
@@ -22,7 +21,12 @@ import {
   updateProjectColor,
   updateProjectName,
 } from "./repository.js";
-import { getLabelSyncJob, startLabelSyncJob } from "./labelSync.js";
+import {
+  getLabelSyncJob,
+  getProjectLabelDeletionJob,
+  startLabelSyncJob,
+  startProjectLabelDeletionJob,
+} from "./labelSync.js";
 import { resolveProjectConfiguratorViewer } from "./permissions.js";
 import { getProjectConfiguratorState } from "./state.js";
 
@@ -347,18 +351,42 @@ projectConfiguratorRouter.delete(
   async (req, res, next) => {
     try {
       readRequiredString(req.body, "trelloMemberId");
+      const trelloBoardId = readRequiredString(req.body, "trelloBoardId");
 
       if (!(await activeProjectExists(req.params.projectId))) {
         throw new NotFoundError("Project was not found.");
       }
 
-      const deleted = await deleteProject(req.params.projectId);
+      const deletion = await startProjectLabelDeletionJob(
+        req.params.projectId,
+        trelloBoardId
+      );
 
-      if (!deleted) {
+      if (deletion.done && deletion.error) {
+        throw new Error(deletion.error);
+      }
+
+      res.status(202).json({ projectDeletion: deletion });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.post(
+  "/api/project-configurator/projects/:projectId/delete/status",
+  async (req, res, next) => {
+    try {
+      readRequiredString(req.body, "trelloMemberId");
+      readRequiredString(req.body, "trelloBoardId");
+
+      const deletion = await getProjectLabelDeletionJob(req.params.projectId);
+
+      if (!deletion) {
         throw new NotFoundError("Project was not found.");
       }
 
-      res.status(204).send();
+      res.json({ projectDeletion: deletion });
     } catch (error) {
       next(error);
     }

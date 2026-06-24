@@ -42,6 +42,10 @@ export type BoardProjectLabelSummary = {
   syncStatus: LabelSyncStatus;
 };
 
+export type BoardProjectLabelWithBoardSummary = BoardProjectLabelSummary & {
+  boardName: string;
+};
+
 export type BoardDepartmentLabelSummary = {
   trelloBoardId: string;
   departmentId: string;
@@ -84,6 +88,10 @@ type BoardProjectLabelRow = {
   synced_label_text: string;
   synced_color: string;
   sync_status: LabelSyncStatus;
+};
+
+type BoardProjectLabelWithBoardRow = BoardProjectLabelRow & {
+  board_name: string;
 };
 
 type BoardDepartmentLabelRow = {
@@ -565,6 +573,37 @@ export async function listBoardProjectLabels(
   );
 
   return result.rows.map(mapBoardProjectLabel);
+}
+
+export async function listBoardProjectLabelsForProject(
+  projectId: string,
+  currentBoardId?: string,
+  client?: pg.PoolClient
+): Promise<BoardProjectLabelWithBoardSummary[]> {
+  const result = await db(client).query<BoardProjectLabelWithBoardRow>(
+    `
+      select
+        bpl.trello_board_id,
+        tb.board_name,
+        bpl.project_id::text,
+        bpl.trello_label_id,
+        bpl.synced_label_text,
+        bpl.synced_color,
+        bpl.sync_status
+      from board_project_labels bpl
+      join trello_boards tb on tb.trello_board_id = bpl.trello_board_id
+      where bpl.project_id = $1
+      order by
+        case when bpl.trello_board_id = $2 then 0 else 1 end,
+        tb.board_name asc
+    `,
+    [projectId, currentBoardId ?? ""]
+  );
+
+  return result.rows.map((row) => ({
+    ...mapBoardProjectLabel(row),
+    boardName: row.board_name,
+  }));
 }
 
 export async function listBoardDepartmentLabels(

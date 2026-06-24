@@ -417,6 +417,7 @@
       var currentBoardId = "";
       var currentState = null;
       var labelSyncStatus = null;
+      var projectDeletionStatus = null;
       var pmFieldApplyStatus = null;
       var t = window.TrelloPowerUp.iframe();
       var colorHex = {
@@ -687,12 +688,12 @@
         });
         document.querySelectorAll("button[data-delete-project]").forEach(function (button) {
           button.onclick = function () {
-            deleteEntity("project", button.getAttribute("data-delete-project"));
+            deleteEntity("project", button.getAttribute("data-delete-project"), button);
           };
         });
         document.querySelectorAll("button[data-delete-department]").forEach(function (button) {
           button.onclick = function () {
-            deleteEntity("department", button.getAttribute("data-delete-department"));
+            deleteEntity("department", button.getAttribute("data-delete-department"), button);
           };
         });
         document.querySelectorAll("button[data-inline-edit-project]").forEach(function (button) {
@@ -1006,7 +1007,7 @@
         }
       }
 
-      async function deleteEntity(kind, id) {
+      async function deleteEntity(kind, id, button) {
         var items = kind === "project" ? currentState.projects : currentState.departments;
         var entity = items.find(function (item) { return item.id === id; });
         var label = entity ? entity.name : "this " + kind;
@@ -1016,7 +1017,12 @@
         }
 
         try {
-          await apiRequest(
+          if (button) {
+            button.disabled = true;
+            button.textContent = "Deleting...";
+          }
+
+          var result = await apiRequest(
             "/api/project-configurator/" +
               (kind === "project" ? "projects" : "departments") +
               "/" +
@@ -1024,11 +1030,114 @@
             {},
             "DELETE"
           );
+
+          if (kind === "project") {
+            projectDeletionStatus = result.projectDeletion || null;
+
+            if (projectDeletionStatus && !projectDeletionStatus.done) {
+              showMessage(describeProjectDeletionStatus(projectDeletionStatus), "success");
+              await pollProjectDeletion(id, button);
+              return;
+            }
+
+            await finishProjectDeletion(projectDeletionStatus || {});
+            return;
+          }
+
           await loadState();
           showMessage((kind === "project" ? "Project" : "Department") + " deleted.", "success");
         } catch (error) {
           showMessage(error.message || error, "error");
+          if (button) {
+            button.disabled = false;
+            button.textContent = "Del";
+          }
         }
+      }
+
+      async function pollProjectDeletion(projectId, button) {
+        var result = await apiRequest(
+          "/api/project-configurator/projects/" +
+            encodeURIComponent(projectId) +
+            "/delete/status",
+          { trelloBoardId: currentBoardId }
+        );
+        var deletion = result.projectDeletion || projectDeletionStatus || {};
+
+        if (result.projectDeletion) {
+          projectDeletionStatus = result.projectDeletion;
+        }
+
+        if (!deletion.done) {
+          showMessage(describeProjectDeletionStatus(deletion), "success");
+          window.setTimeout(function () {
+            pollProjectDeletion(projectId, button).catch(function (error) {
+              showMessage(error.message || error, "error");
+              if (button) {
+                button.disabled = false;
+                button.textContent = "Del";
+              }
+            });
+          }, 1200);
+          return;
+        }
+
+        await finishProjectDeletion(deletion);
+      }
+
+      async function finishProjectDeletion(deletion) {
+        await loadState();
+
+        if ((deletion.failed || 0) > 0 || deletion.error) {
+          showMessage(
+            "Project label cleanup failed for " +
+              (deletion.failed || 0) +
+              " of " +
+              (deletion.attempted || 0) +
+              " label(s). The project was kept so you can retry.",
+            "error"
+          );
+          return;
+        }
+
+        showMessage(
+          "Project deleted and " +
+            (deletion.deleted || 0) +
+            " project label" +
+            ((deletion.deleted || 0) === 1 ? "" : "s") +
+            " removed across " +
+            (deletion.boards || 0) +
+            " known board" +
+            ((deletion.boards || 0) === 1 ? "" : "s") +
+            ".",
+          "success"
+        );
+      }
+
+      function describeProjectDeletionStatus(deletion) {
+        var processed = deletion.processed || 0;
+        var attempted = deletion.attempted || 0;
+        var boardText = deletion.currentBoardName
+          ? " on " + deletion.currentBoardName
+          : "";
+
+        if (attempted === 0) {
+          return "Preparing project label cleanup...";
+        }
+
+        return (
+          "Deleting project labels" +
+          boardText +
+          ": " +
+          processed +
+          " of " +
+          attempted +
+          " processed, " +
+          (deletion.deleted || 0) +
+          " deleted" +
+          ((deletion.failed || 0) > 0 ? ", " + deletion.failed + " failed" : "") +
+          "."
+        );
       }
 
       async function synchronizeLabels(button) {

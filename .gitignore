@@ -8,4 +8,5 @@ node_modules/*
 *.db
 *.db-*
 dist/*
+exports/*
 permission_dashboard_admin_credentials.txt

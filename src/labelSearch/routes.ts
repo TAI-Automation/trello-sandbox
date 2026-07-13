@@ -1,6 +1,6 @@
 import express from "express";
 
-import { searchBoardLabels } from "./repository.js";
+import { applyBoardLabelToCard, searchBoardLabels } from "./repository.js";
 
 export const labelSearchRouter = express.Router();
 
@@ -11,6 +11,20 @@ labelSearchRouter.get("/api/label-search/search", async (req, res, next) => {
     const results = await searchBoardLabels({ boardId, query });
 
     res.json({ results });
+  } catch (error) {
+    next(error);
+  }
+});
+
+labelSearchRouter.post("/api/label-search/apply", async (req, res, next) => {
+  try {
+    const cardId = readRequiredBodyString(req.body, "cardId");
+    const boardId = readRequiredBodyString(req.body, "boardId");
+    const trelloLabelId = readRequiredBodyString(req.body, "trelloLabelId");
+
+    await applyBoardLabelToCard({ cardId, boardId, trelloLabelId });
+
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
@@ -39,6 +53,20 @@ function readOptionalQueryString(value: unknown): string {
   }
 
   return "";
+}
+
+function readRequiredBodyString(body: unknown, key: string): string {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new BadRequestError(`${key} is required.`);
+  }
+
+  const value = (body as Record<string, unknown>)[key];
+
+  if (typeof value !== "string" || !value.trim()) {
+    throw new BadRequestError(`${key} is required.`);
+  }
+
+  return value.trim();
 }
 
 class BadRequestError extends Error {

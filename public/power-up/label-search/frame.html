@@ -110,11 +110,11 @@
 
       button {
         align-items: center;
-        background: var(--soft);
+        background: var(--brand);
         border: 0;
         border-radius: 6px;
-        color: var(--muted);
-        cursor: not-allowed;
+        color: #ffffff;
+        cursor: pointer;
         display: inline-flex;
         font: inherit;
         font-size: 12px;
@@ -122,6 +122,19 @@
         min-height: 32px;
         padding: 6px 10px;
         white-space: nowrap;
+      }
+
+      button:disabled {
+        background: var(--soft);
+        color: var(--muted);
+        cursor: not-allowed;
+      }
+
+      .error {
+        color: #ae2e24;
+        font-size: 12px;
+        grid-column: 2 / 4;
+        line-height: 1.35;
       }
 
       .empty {
@@ -159,6 +172,7 @@
       var t = window.TrelloPowerUp.iframe();
       var boardId = "";
       var cardId = "";
+      var cardLabelIds = [];
       var searchTimer = 0;
 
       var colorMap = {
@@ -208,6 +222,9 @@
           var name = document.createElement("p");
           var meta = document.createElement("p");
           var button = document.createElement("button");
+          var error = document.createElement("p");
+          var alreadyOnCard =
+            cardLabelIds.indexOf(String(item.trelloLabelId || "")) !== -1;
 
           row.className = "result";
           swatch.className = "swatch";
@@ -219,16 +236,75 @@
           meta.textContent =
             "Score " + item.score + " · " + (item.matchedReason || "Match");
           button.type = "button";
-          button.disabled = true;
-          button.textContent = "Apply coming later";
+          button.disabled = alreadyOnCard || !cardId;
+          button.textContent = alreadyOnCard ? "Already on card" : "Add label";
+          error.className = "error";
+          error.hidden = true;
+
+          button.addEventListener("click", function () {
+            applyLabel(item, button, error);
+          });
 
           content.appendChild(name);
           content.appendChild(meta);
           row.appendChild(swatch);
           row.appendChild(content);
           row.appendChild(button);
+          row.appendChild(error);
           results.appendChild(row);
         });
+      }
+
+      async function applyLabel(item, button, error) {
+        if (!cardId || !boardId || !item.trelloLabelId) {
+          showApplyError(error, "Could not determine the card or label.");
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Adding...";
+        error.hidden = true;
+        error.textContent = "";
+
+        try {
+          var response = await fetch("/api/label-search/apply", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              cardId: cardId,
+              boardId: boardId,
+              trelloLabelId: item.trelloLabelId,
+            }),
+          });
+
+          if (!response.ok) {
+            var body = await response.json().catch(function () {
+              return {};
+            });
+            throw new Error(body.error || "Could not add label.");
+          }
+
+          if (cardLabelIds.indexOf(item.trelloLabelId) === -1) {
+            cardLabelIds.push(item.trelloLabelId);
+          }
+
+          button.textContent = "Added";
+          setStatus("Label added.");
+        } catch (applyError) {
+          button.disabled = false;
+          button.textContent = "Add label";
+          showApplyError(
+            error,
+            applyError.message || "Could not add label."
+          );
+        }
+      }
+
+      function showApplyError(error, message) {
+        error.textContent = message;
+        error.hidden = false;
       }
 
       async function searchLabels() {
@@ -277,16 +353,33 @@
 
       async function loadContext() {
         var board = await t.board("id");
-        var card = await t.card("id");
+        var card = await t.card("id", "idLabels", "labels");
 
         boardId = board && board.id ? board.id : "";
         cardId = card && card.id ? card.id : "";
+        cardLabelIds = readCardLabelIds(card);
 
         if (!boardId) {
           throw new Error("Could not determine the current Trello board.");
         }
 
         setStatus(cardId ? "Card context loaded." : "Board context loaded.");
+      }
+
+      function readCardLabelIds(card) {
+        if (card && Array.isArray(card.idLabels)) {
+          return card.idLabels.slice();
+        }
+
+        if (card && Array.isArray(card.labels)) {
+          return card.labels
+            .map(function (label) {
+              return label && label.id ? label.id : "";
+            })
+            .filter(Boolean);
+        }
+
+        return [];
       }
 
       document.getElementById("query").addEventListener("input", scheduleSearch);

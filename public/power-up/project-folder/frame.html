@@ -122,12 +122,12 @@
 
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
     <script>
-      function getLabelNames(card) {
+      function getLabelIds(card) {
         var labels = card && Array.isArray(card.labels) ? card.labels : [];
 
         return labels
           .map(function (label) {
-            return label && typeof label.name === "string" ? label.name.trim() : "";
+            return label && typeof label.id === "string" ? label.id.trim() : "";
           })
           .filter(Boolean);
       }
@@ -147,9 +147,11 @@
       async function resolveProjectFolder() {
         var t = window.TrelloPowerUp.iframe();
         var card = await t.card("labels");
-        var labels = getLabelNames(card);
+        var board = await t.board("id");
+        var boardId = board && typeof board.id === "string" ? board.id.trim() : "";
+        var labelIds = getLabelIds(card);
 
-        if (labels.length === 0) {
+        if (!boardId || labelIds.length === 0) {
           return { matched: false, routes: [] };
         }
 
@@ -158,7 +160,7 @@
           headers: {
             "content-type": "application/json",
           },
-          body: JSON.stringify({ labels: labels }),
+          body: JSON.stringify({ boardId: boardId, labelIds: labelIds }),
         });
 
         if (!response.ok) {

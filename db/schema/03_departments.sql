@@ -9,36 +9,12 @@ create table if not exists departments (
   updated_at timestamptz not null default now(),
   check (
     department_color in (
-      'green',
-      'yellow',
-      'orange',
-      'red',
-      'purple',
-      'blue',
-      'sky',
-      'lime',
-      'pink',
-      'black',
-      'green_light',
-      'yellow_light',
-      'orange_light',
-      'red_light',
-      'purple_light',
-      'blue_light',
-      'sky_light',
-      'lime_light',
-      'pink_light',
-      'black_light',
-      'green_dark',
-      'yellow_dark',
-      'orange_dark',
-      'red_dark',
-      'purple_dark',
-      'blue_dark',
-      'sky_dark',
-      'lime_dark',
-      'pink_dark',
-      'black_dark'
+      'green', 'yellow', 'orange', 'red', 'purple', 'blue', 'sky', 'lime',
+      'pink', 'black', 'green_light', 'yellow_light', 'orange_light',
+      'red_light', 'purple_light', 'blue_light', 'sky_light', 'lime_light',
+      'pink_light', 'black_light', 'green_dark', 'yellow_dark', 'orange_dark',
+      'red_dark', 'purple_dark', 'blue_dark', 'sky_dark', 'lime_dark',
+      'pink_dark', 'black_dark'
     )
   )
 );

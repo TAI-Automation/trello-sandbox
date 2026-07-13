@@ -1,5 +1,5 @@
 create table if not exists board_project_labels (
-  trello_board_id text not null references trello_boards(trello_board_id),
+  trello_board_id text not null references trello_boards(trello_board_id) on delete cascade,
   project_id bigint not null references projects(id),
   trello_label_id text not null,
   synced_label_text text not null,

@@ -197,7 +197,7 @@ function buildCsvFiles(board: JsonObject): CsvFile[] {
       fileName: "card_members.csv",
       headers: csvHeaders.cardMembers,
       rows: cards.flatMap((card) =>
-        readArray(card.idMembers).map((memberId) => ({
+        readPrimitiveArray(card.idMembers).map((memberId) => ({
           cardId: card.id,
           memberId,
           raw_json: toJson({ cardId: card.id, memberId }),

@@ -13,9 +13,10 @@ type ProjectFolderRouteRow = {
 };
 
 export async function resolveProjectFolderRoutes(
-  labels: string[]
+  boardId: string,
+  labelIds: string[]
 ): Promise<ProjectFolderRoute[]> {
-  if (labels.length === 0) {
+  if (labelIds.length === 0) {
     return [];
   }
 
@@ -23,26 +24,29 @@ export async function resolveProjectFolderRoutes(
     `
       with card_labels as (
         select
-          trim(label_name) as label_name,
-          lower(trim(label_name)) as label_normalized,
+          label_id,
           ordinality
-        from unnest($1::text[]) with ordinality as input(label_name, ordinality)
-        where trim(label_name) <> ''
+        from unnest($2::text[]) with ordinality as input(label_id, ordinality)
+        where trim(label_id) <> ''
       )
       select
         projects.name as project_name,
         project_folder_routes.folder_path,
-        card_labels.label_name
+        board_project_labels.synced_label_text as label_name
       from card_labels
+      join board_project_labels
+        on board_project_labels.trello_board_id = $1
+       and board_project_labels.trello_label_id = card_labels.label_id
+       and board_project_labels.sync_status = 'synced'
       join projects
-        on projects.name_normalized = card_labels.label_normalized
+        on projects.id = board_project_labels.project_id
       join project_folder_routes
         on project_folder_routes.project_id = projects.id
       where projects.archived_at is null
         and project_folder_routes.enabled = true
       order by card_labels.ordinality asc
     `,
-    [labels]
+    [boardId, labelIds]
   );
 
   return result.rows.map((row) => ({

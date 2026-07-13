@@ -1,5 +1,5 @@
 create table if not exists project_folder_routes (
-  project_id bigint primary key references projects (id) on delete cascade,
+  project_id bigint primary key references projects(id) on delete cascade,
   folder_path text not null,
   enabled boolean not null default true,
   created_at timestamptz not null default now(),

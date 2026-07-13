@@ -15,7 +15,7 @@ trelloArchiveRouter.get(
   "/api/trello-archive/board-json",
   async (req, res, next) => {
     try {
-      const boardId = readRequiredQueryString(req.query.boardId, "boardId");
+      const boardId = readRequiredTrelloId(req.query.boardId, "boardId");
       const saveLocal = readOptionalBooleanQuery(req.query.saveLocal, "saveLocal");
       const saveCsv = readOptionalBooleanQuery(req.query.saveCsv, "saveCsv");
 
@@ -128,4 +128,14 @@ class BadRequestError extends Error {
 
 class BadGatewayError extends Error {
   status = 502;
+}
+
+function readRequiredTrelloId(value: unknown, key: string): string {
+  const result = readRequiredQueryString(value, key);
+
+  if (!/^[a-zA-Z0-9]+$/.test(result)) {
+    throw new BadRequestError(`${key} must be a valid Trello id.`);
+  }
+
+  return result;
 }

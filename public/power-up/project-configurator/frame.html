@@ -230,6 +230,14 @@
         margin-top: 7px;
       }
 
+      .folder-path-editor {
+        align-items: end;
+        display: grid;
+        gap: 6px;
+        grid-template-columns: minmax(160px, 1fr) auto;
+        margin-top: 7px;
+      }
+
       .entity-title {
         display: grid;
         gap: 3px;
@@ -525,6 +533,8 @@
           kind === "project" && currentState.capabilities.canEditProjectManagers
             ? renderProjectManagerAdd(entity)
             : "";
+        var folderPathEditor =
+          kind === "project" ? renderProjectFolderPathEditor(entity) : "";
         return (
           '<article class="entity">' +
           renderSwatch(color) +
@@ -538,6 +548,7 @@
           "</button></h3>" +
           projectManagers +
           projectManagerEditor +
+          folderPathEditor +
           "</div>" +
           '<div class="row-actions">' +
           '<button type="button" class="secondary" title="Edit" aria-label="Edit ' +
@@ -555,6 +566,20 @@
           escapeHtml(entity.id) +
           '">Del</button>' +
           "</div></article>"
+        );
+      }
+
+      function renderProjectFolderPathEditor(project) {
+        return (
+          '<div class="folder-path-editor">' +
+          '<label>Folder Path<input data-project-folder-input="' +
+          escapeHtml(project.id) +
+          '" value="' +
+          escapeHtml(project.folderPath || "") +
+          '" autocomplete="off" /></label>' +
+          '<button type="button" class="secondary" data-save-project-folder="' +
+          escapeHtml(project.id) +
+          '">Save</button></div>'
         );
       }
 
@@ -666,6 +691,11 @@
         document.querySelectorAll("button[data-add-project-manager]").forEach(function (button) {
           button.onclick = function () {
             addProjectManager(button.getAttribute("data-add-project-manager"));
+          };
+        });
+        document.querySelectorAll("button[data-save-project-folder]").forEach(function (button) {
+          button.onclick = function () {
+            saveProjectFolderPath(button.getAttribute("data-save-project-folder"));
           };
         });
         document.querySelectorAll("button[data-remove-project-manager]").forEach(function (button) {
@@ -1350,6 +1380,30 @@
           );
           await loadState();
           showMessage("Project manager removed.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        }
+      }
+
+      async function saveProjectFolderPath(projectId) {
+        var input = document.querySelector('[data-project-folder-input="' + projectId + '"]');
+        var folderPath = String((input && input.value) || "").trim();
+
+        if (!folderPath) {
+          showMessage("Folder Path is required.", "error");
+          return;
+        }
+
+        try {
+          await apiRequest(
+            "/api/project-configurator/projects/" +
+              encodeURIComponent(projectId) +
+              "/folder-path",
+            { folderPath: folderPath },
+            "PATCH"
+          );
+          await loadState();
+          showMessage("Folder Path saved.", "success");
         } catch (error) {
           showMessage(error.message || error, "error");
         }

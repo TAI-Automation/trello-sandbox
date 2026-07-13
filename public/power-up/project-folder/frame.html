@@ -42,6 +42,25 @@
         letter-spacing: 0;
       }
 
+      .routes {
+        display: grid;
+        gap: 12px;
+      }
+
+      .route {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .route-title {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
+
       .path {
         background: var(--soft);
         border: 1px solid var(--border);
@@ -95,20 +114,14 @@
   <body>
     <main>
       <h1>Project Folder</h1>
-      <p class="path" id="folderPath">Loading...</p>
-      <div class="actions" id="actions" hidden>
-        <button type="button" id="tryOpenButton">Try Open Folder</button>
-        <button type="button" class="secondary" id="copyPathButton">
-          Copy Path
-        </button>
+      <div class="routes" id="routes">
+        <p class="status">Loading...</p>
       </div>
       <p class="status" id="status"></p>
     </main>
 
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
     <script>
-      var uncPath = "";
-
       function getLabelNames(card) {
         var labels = card && Array.isArray(card.labels) ? card.labels : [];
 
@@ -137,7 +150,7 @@
         var labels = getLabelNames(card);
 
         if (labels.length === 0) {
-          return { matched: false };
+          return { matched: false, routes: [] };
         }
 
         var response = await fetch("/api/project-folder/resolve", {
@@ -155,57 +168,101 @@
         return response.json();
       }
 
+      function createButton(text, className, onClick) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.textContent = text;
+        button.className = className || "";
+        button.addEventListener("click", onClick);
+
+        return button;
+      }
+
+      function renderRoute(route) {
+        var routeElement = document.createElement("section");
+        var title = document.createElement("p");
+        var path = document.createElement("p");
+        var actions = document.createElement("div");
+        var folderPath = route.folderPath;
+        var labelName =
+          typeof route.labelName === "string" && route.labelName.trim()
+            ? route.labelName.trim()
+            : "Project";
+
+        routeElement.className = "route";
+        title.className = "route-title";
+        title.textContent = 'Label "' + labelName + '":';
+        path.className = "path";
+        path.textContent = folderPath;
+        actions.className = "actions";
+        actions.appendChild(
+          createButton("Try Open Folder", "", function () {
+            var fileUrl = toFileUrl(folderPath);
+
+            if (!fileUrl) {
+              setStatus("This folder path cannot be opened by the browser.");
+              return;
+            }
+
+            window.location.href = fileUrl;
+            setStatus(
+              "Tried to open the folder. If the browser blocks it, use Copy Path."
+            );
+          })
+        );
+        actions.appendChild(
+          createButton("Copy Path", "secondary", async function () {
+            try {
+              await navigator.clipboard.writeText(folderPath);
+              setStatus("Path copied.");
+            } catch (_error) {
+              setStatus("Could not copy automatically. Select the path above and copy it.");
+            }
+          })
+        );
+
+        routeElement.appendChild(title);
+        routeElement.appendChild(path);
+        routeElement.appendChild(actions);
+
+        return routeElement;
+      }
+
       async function loadProjectFolder() {
+        var routesElement = document.getElementById("routes");
+
         try {
           var result = await resolveProjectFolder();
 
-          if (!result || !result.matched) {
-            document.getElementById("folderPath").textContent =
-              "No project folder route matched this card.";
+          routesElement.textContent = "";
+
+          if (
+            !result ||
+            !result.matched ||
+            !Array.isArray(result.routes) ||
+            result.routes.length === 0
+          ) {
+            var empty = document.createElement("p");
+            empty.className = "status";
+            empty.textContent = "No project folder route found for this card.";
+            routesElement.appendChild(empty);
             setStatus("Add a routed project label to show a folder path.");
             return;
           }
 
-          uncPath = result.folderPath;
-          document.getElementById("folderPath").textContent = uncPath;
-          document.getElementById("actions").hidden = false;
+          result.routes.forEach(function (route) {
+            routesElement.appendChild(renderRoute(route));
+          });
           setStatus("Copy Path is the reliable option if the browser blocks opening folders.");
         } catch (_error) {
-          document.getElementById("folderPath").textContent =
-            "Could not load the project folder path.";
+          routesElement.textContent = "";
+          var error = document.createElement("p");
+          error.className = "status";
+          error.textContent = "Could not load the project folder paths.";
+          routesElement.appendChild(error);
           setStatus("Close this window and try again.");
         }
       }
-
-      document
-        .getElementById("tryOpenButton")
-        .addEventListener("click", function () {
-          var fileUrl = toFileUrl(uncPath);
-
-          if (!fileUrl) {
-            setStatus("This folder path cannot be opened by the browser.");
-            return;
-          }
-
-          window.location.href = fileUrl;
-          setStatus("Tried to open the folder. If the browser blocks it, use Copy Path.");
-        });
-
-      document
-        .getElementById("copyPathButton")
-        .addEventListener("click", async function () {
-          try {
-            if (!uncPath) {
-              setStatus("No folder path is available to copy.");
-              return;
-            }
-
-            await navigator.clipboard.writeText(uncPath);
-            setStatus("Path copied.");
-          } catch (_error) {
-            setStatus("Could not copy automatically. Select the path above and copy it.");
-          }
-        });
 
       loadProjectFolder();
     </script>

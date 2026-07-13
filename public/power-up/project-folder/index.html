@@ -23,7 +23,7 @@
         var labels = getLabelNames(card);
 
         if (labels.length === 0) {
-          return { matched: false };
+          return { matched: false, routes: [] };
         }
 
         var response = await fetch("/api/project-folder/resolve", {
@@ -35,7 +35,7 @@
         });
 
         if (!response.ok) {
-          return { matched: false };
+          return { matched: false, routes: [] };
         }
 
         return response.json();
@@ -59,7 +59,12 @@
         "card-buttons": async function (t) {
           var result = await resolveProjectFolder(t);
 
-          return result && result.matched ? [projectFolderButton()] : [];
+          return result &&
+            result.matched &&
+            Array.isArray(result.routes) &&
+            result.routes.length > 0
+            ? [projectFolderButton()]
+            : [];
         },
       });
     </script>

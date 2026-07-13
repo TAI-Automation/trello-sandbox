@@ -1,1 +1,0 @@
--- Department assignment roles were removed from the project configurator.

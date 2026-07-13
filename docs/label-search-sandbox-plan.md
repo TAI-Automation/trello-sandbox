@@ -1,0 +1,99 @@
+# Label Search Sandbox Plan
+
+## Purpose
+
+Label Search Sandbox is a sandbox-only Trello Power-Up MVP for searching labels from the current Trello board while viewing a card detail page.
+
+## First Version Scope
+
+- Search actual Trello board labels directly from Trello.
+- Use `TRELLO_KEY` and `TRELLO_TOKEN` server-side through the existing credential helper.
+- Rank labels with local fuzzy matching.
+- Return search results to the modal and card-back section.
+- Add an existing Trello label to the current card only after an explicit user click.
+- Do not use Neon as the primary label source.
+- Do not classify project or department labels.
+- Do not create, update, delete, or sync labels.
+- Do not write to Neon.
+
+## Files Added/Edited
+
+- Added `public/power-up/label-search/index.html`
+- Added `public/power-up/label-search/frame.html`
+- Added `src/labelSearch/routes.ts`
+- Added `src/labelSearch/repository.ts`
+- Added `src/labelSearch/fuzzy.ts`
+- Added `docs/label-search-sandbox-plan.md`
+- Edited `src/app.ts`
+
+## Routes Added
+
+- `GET /api/label-search/search?boardId=<boardId>&q=<query>`
+- `POST /api/label-search/apply`
+
+The route reads labels from Trello for the supplied board id and returns up to 20 ranked results:
+
+- `trelloLabelId`
+- `name`
+- `color`
+- `score`
+- `matchedReason`
+
+The apply route is the first write action in this sandbox feature. It accepts `cardId`, `boardId`, and `trelloLabelId`, verifies the requested Trello label exists on the supplied board, and adds that existing label to the current Trello card after an explicit user click.
+
+The apply route does not create labels, delete labels, update label names or colors, sync labels, or write to Neon.
+
+The UI keeps search available as long as the current board id is detected. Add label buttons are enabled only when the current card id is detected, the label is not already on the card, and no apply request is in progress.
+
+## Fuzzy Scoring Notes
+
+Typo-close matching includes a small QWERTY keyboard proximity refinement for one-character substitutions. A substitution between neighboring keys, such as `where` and `wjere`, ranks slightly above a farther substitution such as `where` and `wxere`, while exact, token, plural/singular, prefix, phrase, and strong word-overlap matches continue to rank higher.
+
+## Manual Trello Admin Registration Steps
+
+1. Open the Trello Power-Up admin page for this sandbox Power-Up.
+2. Add or update the connector iframe URL to:
+   `https://<sandbox-host>/power-up/label-search/index.html`
+3. Save the Power-Up settings.
+4. Enable the Power-Up on the sandbox Trello board.
+5. Open a card detail page and use the `Search Labels` card button.
+
+## Required Vercel Env Names
+
+- `TRELLO_KEY`
+- `TRELLO_TOKEN`
+
+## Local Test Steps
+
+1. Start the local server:
+   `npm run dev`
+2. Open:
+   `http://localhost:<port>/power-up/label-search/index.html`
+3. In Trello, register the local or tunneled connector URL for the sandbox Power-Up.
+4. Open a Trello card detail page on a board accessible to the configured token.
+5. Click `Search Labels`.
+6. Type a label query and confirm matching labels appear with name, color, score, reason, and an Add label button.
+7. Click Add label and confirm the existing Trello label is added to the current card.
+8. Search the same label again and confirm it is shown as already on the card.
+
+## Future Phases
+
+### Phase 1: Fuzzy Search Trello Board Labels
+
+Search current-board Trello labels directly and rank candidates in the card modal.
+
+### Phase 1.5: Read-Only Neon Compare
+
+Compare Trello labels to Neon records for tracked, untracked, duplicate, project, and department annotations without writing changes.
+
+### Phase 2: Apply Label With Explicit User Click
+
+Add a user-triggered apply action that calls Trello only after an explicit click. This is now implemented for existing board labels only.
+
+### Phase 3: AI Hint Using Fuzzy Top Candidates Only
+
+Use only the fuzzy top candidates as input for AI-assisted hints.
+
+### Phase 4: Learning From Search/Click Feedback
+
+Record search and click feedback to improve future ranking after the write model is explicitly designed.

@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Search Labels</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --border: #dfe1e6;
+        --brand: #0c66e4;
+        --muted: #626f86;
+        --soft: #f1f2f4;
+        --surface: #ffffff;
+        --text: #172b4d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--surface);
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+      }
+
+      header {
+        border-bottom: 1px solid var(--border);
+        display: grid;
+        gap: 4px;
+        padding-bottom: 12px;
+      }
+
+      h1,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      label {
+        color: var(--muted);
+        display: grid;
+        font-size: 12px;
+        gap: 5px;
+      }
+
+      input {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text);
+        font: inherit;
+        min-height: 38px;
+        padding: 8px 10px;
+        width: 100%;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+
+      .debug {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+        margin-top: 6px;
+      }
+
+      .results {
+        display: grid;
+        gap: 8px;
+      }
+
+      .result {
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 18px 1fr auto;
+        min-height: 54px;
+        padding: 10px;
+      }
+
+      .swatch {
+        border-radius: 4px;
+        height: 18px;
+        width: 18px;
+      }
+
+      .label-name {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      button {
+        align-items: center;
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        font-size: 12px;
+        justify-content: center;
+        min-height: 32px;
+        padding: 6px 10px;
+        white-space: nowrap;
+      }
+
+      button:disabled {
+        background: var(--soft);
+        color: var(--muted);
+        cursor: not-allowed;
+      }
+
+      .error {
+        color: #ae2e24;
+        font-size: 12px;
+        grid-column: 2 / 4;
+        line-height: 1.35;
+      }
+
+      .add-disabled-notice {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+        padding: 8px 10px;
+      }
+
+      .empty {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.4;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Search Labels</h1>
+        <p class="status" id="status">Loading Trello context...</p>
+      </header>
+      <label>
+        Search board labels
+        <input
+          id="query"
+          type="search"
+          autocomplete="off"
+          placeholder="Type a label name"
+        />
+      </label>
+      <section class="results" id="results">
+        <div class="empty">Start typing to search labels.</div>
+      </section>
+    </main>
+
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var t = window.TrelloPowerUp.iframe();
+      var boardId = "";
+      var cardId = "";
+      var cardLabelIds = [];
+      var searchTimer = 0;
+
+      var colorMap = {
+        green: "#4bce97",
+        yellow: "#f5cd47",
+        orange: "#fea362",
+        red: "#f87168",
+        purple: "#9f8fef",
+        blue: "#579dff",
+        sky: "#6cc3e0",
+        lime: "#94c748",
+        pink: "#e774bb",
+        black: "#8590a2",
+      };
+
+      function setStatus(text) {
+        document.getElementById("status").textContent = text;
+      }
+
+      function clearResults(message, debugText) {
+        var results = document.getElementById("results");
+        results.textContent = "";
+        var empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = message;
+        results.appendChild(empty);
+
+        if (debugText) {
+          var debug = document.createElement("p");
+          debug.className = "debug";
+          debug.textContent = debugText;
+          empty.appendChild(debug);
+        }
+      }
+
+      function renderResults(items, query) {
+        var results = document.getElementById("results");
+        results.textContent = "";
+
+        if (!query.trim()) {
+          clearResults("Start typing to search labels.");
+          return;
+        }
+
+        if (!items.length) {
+          clearResults("No matching labels found.");
+          return;
+        }
+
+        if (!cardId) {
+          var notice = document.createElement("div");
+          var noticeDebug = document.createElement("p");
+
+          notice.className = "add-disabled-notice";
+          notice.textContent =
+            "Cannot add labels because current card id was not detected.";
+          noticeDebug.className = "debug";
+          noticeDebug.textContent = buildContextDebugLine();
+          notice.appendChild(noticeDebug);
+          results.appendChild(notice);
+        }
+
+        items.forEach(function (item) {
+          var row = document.createElement("article");
+          var swatch = document.createElement("span");
+          var content = document.createElement("div");
+          var name = document.createElement("p");
+          var meta = document.createElement("p");
+          var button = document.createElement("button");
+          var error = document.createElement("p");
+          var alreadyOnCard =
+            cardLabelIds.indexOf(String(item.trelloLabelId || "")) !== -1;
+
+          row.className = "result";
+          swatch.className = "swatch";
+          swatch.style.background = colorMap[item.color] || "#dfe1e6";
+          swatch.title = item.color || "No color";
+          name.className = "label-name";
+          name.textContent = item.name || "(blank label)";
+          meta.className = "meta";
+          meta.textContent =
+            "Score " + item.score + " · " + (item.matchedReason || "Match");
+          button.type = "button";
+          button.disabled = alreadyOnCard || !cardId;
+          button.textContent = alreadyOnCard ? "Already on card" : "Add label";
+          error.className = "error";
+          error.hidden = true;
+
+          button.addEventListener("click", function () {
+            applyLabel(item, button, error);
+          });
+
+          content.appendChild(name);
+          content.appendChild(meta);
+          row.appendChild(swatch);
+          row.appendChild(content);
+          row.appendChild(button);
+          row.appendChild(error);
+          results.appendChild(row);
+        });
+      }
+
+      async function applyLabel(item, button, error) {
+        if (!cardId || !boardId || !item.trelloLabelId) {
+          showApplyError(error, "Could not determine the card or label.");
+          return;
+        }
+
+        button.disabled = true;
+        button.textContent = "Adding...";
+        error.hidden = true;
+        error.textContent = "";
+
+        try {
+          var response = await fetch("/api/label-search/apply", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              cardId: cardId,
+              boardId: boardId,
+              trelloLabelId: item.trelloLabelId,
+            }),
+          });
+
+          if (!response.ok) {
+            var body = await response.json().catch(function () {
+              return {};
+            });
+            throw new Error(body.error || "Could not add label.");
+          }
+
+          if (cardLabelIds.indexOf(item.trelloLabelId) === -1) {
+            cardLabelIds.push(item.trelloLabelId);
+          }
+
+          button.textContent = "Added";
+          setStatus("Label added.");
+        } catch (applyError) {
+          button.disabled = false;
+          button.textContent = "Add label";
+          showApplyError(
+            error,
+            applyError.message || "Could not add label."
+          );
+        }
+      }
+
+      function showApplyError(error, message) {
+        error.textContent = message;
+        error.hidden = false;
+      }
+
+      async function searchLabels() {
+        var query = document.getElementById("query").value;
+
+        if (!boardId) {
+          clearResults(
+            "Could not determine the current board.",
+            buildContextDebugLine()
+          );
+          return;
+        }
+
+        if (!query.trim()) {
+          setStatus(cardId ? "Card context loaded." : "Board context loaded.");
+          clearResults("Start typing to search labels.");
+          return;
+        }
+
+        setStatus("Searching Trello board labels...");
+
+        var response = await fetch(
+          "/api/label-search/search?boardId=" +
+            encodeURIComponent(boardId) +
+            "&q=" +
+            encodeURIComponent(query)
+        );
+
+        if (!response.ok) {
+          throw new Error("Label search failed.");
+        }
+
+        var body = await response.json();
+        var results = Array.isArray(body.results) ? body.results : [];
+
+        renderResults(results, query);
+        setStatus(results.length + " matching label(s)");
+      }
+
+      function scheduleSearch() {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(function () {
+          searchLabels().catch(function (error) {
+            setStatus(error.message || "Label search failed.");
+            clearResults("Could not search labels.");
+          });
+        }, 180);
+      }
+
+      var contextDebug = {
+        cardKeys: [],
+        boardKeys: [],
+        contextKeys: [],
+      };
+
+      async function loadContext() {
+        var resolved = await readTrelloContext();
+
+        boardId = resolved.boardId;
+        cardId = resolved.cardId;
+        cardLabelIds = resolved.cardLabelIds;
+
+        if (!boardId) {
+          throw new Error("Could not determine the current Trello board.");
+        }
+
+        setStatus(cardId ? "Card context loaded." : "Board context loaded.");
+      }
+
+      async function readTrelloContext() {
+        var card = await readCardContext();
+        var board = await readBoardContext();
+        var context = await readPowerUpContext();
+        var resolvedBoardId =
+          readString(card && card.idBoard) ||
+          readString(board && board.id) ||
+          readString(context && context.idBoard) ||
+          readString(context && context.boardId) ||
+          readString(context && context.board);
+        var resolvedCardId =
+          readString(card && card.id) ||
+          readString(context && context.idCard) ||
+          readString(context && context.cardId) ||
+          readString(context && context.card);
+
+        contextDebug = {
+          cardKeys: listObjectKeys(card),
+          boardKeys: listObjectKeys(board),
+          contextKeys: listObjectKeys(context),
+        };
+
+        return {
+          boardId: resolvedBoardId,
+          cardId: resolvedCardId,
+          cardLabelIds: readCardLabelIds(card),
+        };
+      }
+
+      async function readCardContext() {
+        try {
+          return await t.card("id", "idBoard", "idLabels", "name");
+        } catch (_error) {
+          try {
+            return await t.card("id", "idBoard", "name");
+          } catch (_fallbackError) {
+            try {
+              return await t.card("id");
+            } catch (_idError) {
+              return null;
+            }
+          }
+        }
+      }
+
+      async function readBoardContext() {
+        try {
+          return await t.board("id", "name");
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      async function readPowerUpContext() {
+        if (typeof t.getContext !== "function") {
+          return null;
+        }
+
+        try {
+          return await t.getContext();
+        } catch (_error) {
+          return null;
+        }
+      }
+
+      function readCardLabelIds(card) {
+        if (card && Array.isArray(card.idLabels)) {
+          return card.idLabels.slice();
+        }
+
+        if (card && Array.isArray(card.labels)) {
+          return card.labels
+            .map(function (label) {
+              return label && label.id ? label.id : "";
+            })
+            .filter(Boolean);
+        }
+
+        return [];
+      }
+
+      function readString(value) {
+        return typeof value === "string" && value.trim() ? value.trim() : "";
+      }
+
+      function listObjectKeys(value) {
+        return value && typeof value === "object" && !Array.isArray(value)
+          ? Object.keys(value).sort()
+          : [];
+      }
+
+      function buildContextDebugLine() {
+        return (
+          "Context keys: card[" +
+          formatKeys(contextDebug.cardKeys) +
+          "] board[" +
+          formatKeys(contextDebug.boardKeys) +
+          "] getContext[" +
+          formatKeys(contextDebug.contextKeys) +
+          "]"
+        );
+      }
+
+      function formatKeys(keys) {
+        return keys.length ? keys.join(",") : "none";
+      }
+
+      document.getElementById("query").addEventListener("input", scheduleSearch);
+
+      loadContext()
+        .then(function () {
+          document.getElementById("query").focus();
+        })
+        .catch(function (error) {
+          setStatus(error.message || "Could not load Trello context.");
+          clearResults(
+            "Close this window and try again from a card.",
+            buildContextDebugLine()
+          );
+        });
+    </script>
+  </body>
+</html>

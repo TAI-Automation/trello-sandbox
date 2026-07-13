@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "db:inspect": "tsx scripts/inspectDbSchema.ts",
     "db:migrate": "tsx src/db/migrations.ts",
+    "trello:json-to-csv": "tsx src/trelloArchive/csvExport.ts",
+    "test": "tsx --test tests/labelSearch.test.ts tests/projectFolder.test.ts tests/trelloArchive.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
   },

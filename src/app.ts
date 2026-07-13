@@ -9,6 +9,7 @@ import { createCardRouter } from "./createCard/routes.js";
 import { labelPriorityRouter } from "./labelPriority/routes.js";
 import { labelSearchRouter } from "./labelSearch/routes.js";
 import { projectFolderRouter } from "./projectFolder/routes.js";
+import { trelloArchiveRouter } from "./trelloArchive/routes.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const projectRoot = path.resolve(path.dirname(currentFile), "..");
@@ -33,6 +34,7 @@ export function createApp(): express.Express {
   app.use(labelPriorityRouter);
   app.use(labelSearchRouter);
   app.use(projectFolderRouter);
+  app.use(trelloArchiveRouter);
 
   app.get("/", (_req, res) => {
     res.type("html").send(`<!doctype html>

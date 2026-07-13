@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Folder Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      function getLabelNames(card) {
+        var labels = card && Array.isArray(card.labels) ? card.labels : [];
+
+        return labels
+          .map(function (label) {
+            return label && typeof label.name === "string" ? label.name.trim() : "";
+          })
+          .filter(Boolean);
+      }
+
+      async function resolveProjectFolder(t) {
+        var card = await t.card("labels");
+        var labels = getLabelNames(card);
+
+        if (labels.length === 0) {
+          return { matched: false };
+        }
+
+        var response = await fetch("/api/project-folder/resolve", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ labels: labels }),
+        });
+
+        if (!response.ok) {
+          return { matched: false };
+        }
+
+        return response.json();
+      }
+
+      function projectFolderButton() {
+        return {
+          text: "Open Project Folder",
+          callback: function (t) {
+            return t.modal({
+              title: "Open Project Folder",
+              url: "/power-up/project-folder/frame.html",
+              height: 220,
+              fullscreen: false,
+            });
+          },
+        };
+      }
+
+      window.TrelloPowerUp.initialize({
+        "card-buttons": async function (t) {
+          var result = await resolveProjectFolder(t);
+
+          return result && result.matched ? [projectFolderButton()] : [];
+        },
+      });
+    </script>
+  </body>
+</html>

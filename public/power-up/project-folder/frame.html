@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open Project Folder</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --border: #dfe1e6;
+        --brand: #0c66e4;
+        --muted: #626f86;
+        --soft: #f1f2f4;
+        --surface: #ffffff;
+        --text: #172b4d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--surface);
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 14px;
+        padding: 18px;
+      }
+
+      h1,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      .path {
+        background: var(--soft);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-family: Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+        padding: 10px;
+        user-select: text;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button {
+        align-items: center;
+        background: var(--brand);
+        border: 0;
+        border-radius: 6px;
+        color: #ffffff;
+        cursor: pointer;
+        display: inline-flex;
+        font: inherit;
+        font-size: 13px;
+        justify-content: center;
+        min-height: 34px;
+        padding: 7px 12px;
+      }
+
+      button.secondary {
+        background: var(--soft);
+        color: var(--text);
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+        min-height: 18px;
+      }
+
+      [hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Project Folder</h1>
+      <p class="path" id="folderPath">Loading...</p>
+      <div class="actions" id="actions" hidden>
+        <button type="button" id="tryOpenButton">Try Open Folder</button>
+        <button type="button" class="secondary" id="copyPathButton">
+          Copy Path
+        </button>
+      </div>
+      <p class="status" id="status"></p>
+    </main>
+
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var uncPath = "";
+
+      function getLabelNames(card) {
+        var labels = card && Array.isArray(card.labels) ? card.labels : [];
+
+        return labels
+          .map(function (label) {
+            return label && typeof label.name === "string" ? label.name.trim() : "";
+          })
+          .filter(Boolean);
+      }
+
+      function setStatus(text) {
+        document.getElementById("status").textContent = text;
+      }
+
+      function toFileUrl(path) {
+        if (path.indexOf("\\\\") !== 0) {
+          return "";
+        }
+
+        return "file://" + path.slice(2).replace(/\\/g, "/");
+      }
+
+      async function resolveProjectFolder() {
+        var t = window.TrelloPowerUp.iframe();
+        var card = await t.card("labels");
+        var labels = getLabelNames(card);
+
+        if (labels.length === 0) {
+          return { matched: false };
+        }
+
+        var response = await fetch("/api/project-folder/resolve", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ labels: labels }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Project folder lookup failed.");
+        }
+
+        return response.json();
+      }
+
+      async function loadProjectFolder() {
+        try {
+          var result = await resolveProjectFolder();
+
+          if (!result || !result.matched) {
+            document.getElementById("folderPath").textContent =
+              "No project folder route matched this card.";
+            setStatus("Add a routed project label to show a folder path.");
+            return;
+          }
+
+          uncPath = result.folderPath;
+          document.getElementById("folderPath").textContent = uncPath;
+          document.getElementById("actions").hidden = false;
+          setStatus("Copy Path is the reliable option if the browser blocks opening folders.");
+        } catch (_error) {
+          document.getElementById("folderPath").textContent =
+            "Could not load the project folder path.";
+          setStatus("Close this window and try again.");
+        }
+      }
+
+      document
+        .getElementById("tryOpenButton")
+        .addEventListener("click", function () {
+          var fileUrl = toFileUrl(uncPath);
+
+          if (!fileUrl) {
+            setStatus("This folder path cannot be opened by the browser.");
+            return;
+          }
+
+          window.location.href = fileUrl;
+          setStatus("Tried to open the folder. If the browser blocks it, use Copy Path.");
+        });
+
+      document
+        .getElementById("copyPathButton")
+        .addEventListener("click", async function () {
+          try {
+            if (!uncPath) {
+              setStatus("No folder path is available to copy.");
+              return;
+            }
+
+            await navigator.clipboard.writeText(uncPath);
+            setStatus("Path copied.");
+          } catch (_error) {
+            setStatus("Could not copy automatically. Select the path above and copy it.");
+          }
+        });
+
+      loadProjectFolder();
+    </script>
+  </body>
+</html>

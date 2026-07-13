@@ -43,6 +43,12 @@ The apply route is the first write action in this sandbox feature. It accepts `c
 
 The apply route does not create labels, delete labels, update label names or colors, sync labels, or write to Neon.
 
+The UI keeps search available as long as the current board id is detected. Add label buttons are enabled only when the current card id is detected, the label is not already on the card, and no apply request is in progress.
+
+## Fuzzy Scoring Notes
+
+Typo-close matching includes a small QWERTY keyboard proximity refinement for one-character substitutions. A substitution between neighboring keys, such as `where` and `wjere`, ranks slightly above a farther substitution such as `where` and `wxere`, while exact, token, plural/singular, prefix, phrase, and strong word-overlap matches continue to rank higher.
+
 ## Manual Trello Admin Registration Steps
 
 1. Open the Trello Power-Up admin page for this sandbox Power-Up.

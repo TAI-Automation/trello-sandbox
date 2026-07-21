@@ -29,6 +29,7 @@
         return {
           text: "Enforcement",
           icon: powerUpIconUrl(),
+          condition: "admin",
           callback: function (t) {
             return t.modal({
               title: "Enforcement",
@@ -64,6 +65,19 @@
         };
       }
 
+      async function isCurrentBoardAdmin(t) {
+        var member = await t.member("id");
+        var board = await t.board("memberships");
+        var memberships = board && board.memberships ? board.memberships : [];
+
+        return memberships.some(function (membership) {
+          return (
+            membership.idMember === member.id &&
+            membership.memberType === "admin"
+          );
+        });
+      }
+
       async function getMissingLabelStatus(t) {
         var board = await t.board("id");
         var card = await t.card("id");
@@ -81,6 +95,10 @@
       window.TrelloPowerUp.initialize({
         "board-buttons": async function (t) {
           try {
+            if (!(await isCurrentBoardAdmin(t))) {
+              return [];
+            }
+
             var context = await getMemberAndBoard(t);
             var state =
               context.memberId && context.boardId
@@ -99,7 +117,11 @@
           }
         },
 
-        "card-back-section": function (t) {
+        "card-back-section": async function (t) {
+          if (!(await isCurrentBoardAdmin(t))) {
+            return null;
+          }
+
           return {
             title: "Permission Manager Enforcer",
             icon: powerUpIconUrl(),
@@ -112,6 +134,10 @@
         },
 
         "card-badges": async function (t) {
+          if (!(await isCurrentBoardAdmin(t))) {
+            return [];
+          }
+
           var status = await getMissingLabelStatus(t).catch(function () {
             return null;
           });
@@ -131,6 +157,10 @@
         },
 
         "card-detail-badges": async function (t) {
+          if (!(await isCurrentBoardAdmin(t))) {
+            return [];
+          }
+
           var status = await getMissingLabelStatus(t).catch(function () {
             return null;
           });

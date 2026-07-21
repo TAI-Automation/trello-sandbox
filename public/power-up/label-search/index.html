@@ -8,19 +8,21 @@
   <body>
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
     <script>
+      function searchLabelsModal(t) {
+        return t.modal({
+          title: "Search Labels",
+          url: "/power-up/label-search/frame.html",
+          height: 520,
+          fullscreen: false,
+        });
+      }
+
       window.TrelloPowerUp.initialize({
         "card-buttons": function () {
           return [
             {
               text: "Search Labels",
-              callback: function (t) {
-                return t.modal({
-                  title: "Search Labels",
-                  url: "/power-up/label-search/frame.html",
-                  height: 520,
-                  fullscreen: false,
-                });
-              },
+              callback: searchLabelsModal,
             },
           ];
         },
@@ -28,10 +30,17 @@
         "card-back-section": function (t) {
           return {
             title: "Label Search",
+            icon:
+              window.location.origin +
+              "/power-up/label-search/icons/section-icon-144.svg",
             content: {
               type: "iframe",
               url: t.signUrl("./section.html"),
               height: 1,
+            },
+            action: {
+              text: "Search Labels",
+              callback: searchLabelsModal,
             },
           };
         },

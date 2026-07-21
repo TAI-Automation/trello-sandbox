@@ -72,11 +72,15 @@
         "card-back-section": function (t) {
           return {
             title: "Open Project Folder",
+            icon:
+              window.location.origin +
+              "/power-up/project-folder/icons/section-icon-144.svg",
             content: {
               type: "iframe",
               url: t.signUrl("./section.html"),
               height: 1,
             },
+            action: projectFolderButton(),
           };
         },
       });

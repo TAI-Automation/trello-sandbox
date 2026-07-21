@@ -16,6 +16,9 @@ import {
   deleteDepartment,
   getProject,
   removeProjectManager,
+  deleteProjectSecondaryFolderRoute,
+  replaceProjectSecondaryFolderRoutes,
+  saveProjectSecondaryFolderRoute,
   updateDepartmentColor,
   updateDepartmentName,
   updateProjectColor,
@@ -373,6 +376,89 @@ projectConfiguratorRouter.patch(
   }
 );
 
+projectConfiguratorRouter.patch(
+  "/api/project-configurator/projects/:projectId/secondary-folder-path",
+  async (req, res, next) => {
+    try {
+      const folderPath = readRequiredString(req.body, "folderPath");
+      const originalFolderPath = readOptionalString(
+        req.body,
+        "originalFolderPath"
+      );
+
+      if (!(await activeProjectExists(req.params.projectId))) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const project = await saveProjectSecondaryFolderRoute({
+        projectId: req.params.projectId,
+        folderPath,
+        originalFolderPath,
+      });
+
+      if (!project) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      res.json({ project });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.delete(
+  "/api/project-configurator/projects/:projectId/secondary-folder-path",
+  async (req, res, next) => {
+    try {
+      const folderPath = readRequiredString(req.body, "folderPath");
+
+      if (!(await activeProjectExists(req.params.projectId))) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const project = await deleteProjectSecondaryFolderRoute({
+        projectId: req.params.projectId,
+        folderPath,
+      });
+
+      if (!project) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      res.json({ project });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+projectConfiguratorRouter.patch(
+  "/api/project-configurator/projects/:projectId/secondary-folder-paths",
+  async (req, res, next) => {
+    try {
+      const paths = readPathList(req.body, "paths");
+
+      if (!(await activeProjectExists(req.params.projectId))) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      const project = await replaceProjectSecondaryFolderRoutes({
+        projectId: req.params.projectId,
+        paths,
+      });
+
+      if (!project) {
+        throw new NotFoundError("Project was not found.");
+      }
+
+      res.json({ project });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 projectConfiguratorRouter.delete(
   "/api/project-configurator/projects/:projectId",
   async (req, res, next) => {
@@ -461,6 +547,58 @@ function readOptionalStringArray(body: unknown, key: string): string[] {
         typeof item === "string" && item.trim().length > 0
     )
     .map((item) => item.trim());
+}
+
+function readOptionalString(body: unknown, key: string): string | null {
+  if (!body || typeof body !== "object" || !(key in body)) {
+    return null;
+  }
+
+  const value = (body as Record<string, unknown>)[key];
+
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    throw new BadRequestError(`${key} must be a string.`);
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readPathList(body: unknown, key: string): string[] {
+  if (!body || typeof body !== "object" || !(key in body)) {
+    throw new BadRequestError(`${key} is required.`);
+  }
+
+  const value = (body as Record<string, unknown>)[key];
+
+  if (!Array.isArray(value)) {
+    throw new BadRequestError(`${key} must be an array.`);
+  }
+
+  const seen = new Set<string>();
+  const paths: string[] = [];
+
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new BadRequestError(`${key} must contain only strings.`);
+    }
+
+    const path = item.trim();
+
+    if (!path || seen.has(path)) {
+      continue;
+    }
+
+    seen.add(path);
+    paths.push(path);
+  }
+
+  return paths;
 }
 
 async function requireAdmin(trelloMemberId: string): Promise<void> {

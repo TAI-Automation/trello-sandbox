@@ -17,7 +17,13 @@ export type ProjectSummary = {
   projectColor: string;
   departmentId: string;
   folderPath: string | null;
+  secondaryFolderPaths: string[];
   projectManagers: ProjectManagerSummary[];
+};
+
+export type ProjectListResult = {
+  projects: ProjectSummary[];
+  secondaryFolderPathError: string | null;
 };
 
 export type ProjectManagerSummary = {
@@ -78,6 +84,11 @@ type ProjectManagerRow = {
   sort_order: number;
 };
 
+type ProjectSecondaryFolderRouteRow = {
+  project_id: string;
+  folder_path: string;
+};
+
 type ManagedBoardRow = {
   trello_board_id: string;
   board_name: string;
@@ -125,6 +136,12 @@ export async function listActiveDepartments(
 export async function listActiveProjects(
   client?: pg.PoolClient
 ): Promise<ProjectSummary[]> {
+  return (await listActiveProjectsWithSecondaryStatus(client)).projects;
+}
+
+export async function listActiveProjectsWithSecondaryStatus(
+  client?: pg.PoolClient
+): Promise<ProjectListResult> {
   const projectResult = await db(client).query<ProjectRow>(`
       select
         projects.id::text,
@@ -150,11 +167,154 @@ export async function listActiveProjects(
       where p.archived_at is null
       order by pm.project_id asc, pm.sort_order asc, m.display_name asc
     `);
-  const managersByProjectId = groupProjectManagers(managerResult.rows);
+  let secondaryFolderRows: ProjectSecondaryFolderRouteRow[] = [];
+  let secondaryFolderPathError: string | null = null;
 
-  return projectResult.rows.map((row) =>
-    mapProject(row, managersByProjectId.get(row.id) ?? [])
+  try {
+    const secondaryFolderResult = await db(client).query<ProjectSecondaryFolderRouteRow>(`
+        select project_id::text, folder_path
+        from project_secondary_folder_routes
+        order by project_id asc, sort_order asc, id asc
+      `);
+
+    secondaryFolderRows = secondaryFolderResult.rows;
+  } catch (error) {
+    secondaryFolderPathError =
+      error instanceof Error
+        ? error.message
+        : "Secondary folder paths could not be loaded.";
+  }
+
+  const managersByProjectId = groupProjectManagers(managerResult.rows);
+  const secondaryFolderPathsByProjectId = groupSecondaryFolderPaths(
+    secondaryFolderRows
   );
+
+  return {
+    projects: projectResult.rows.map((row) =>
+      mapProject(
+        row,
+        managersByProjectId.get(row.id) ?? [],
+        secondaryFolderPathsByProjectId.get(row.id) ?? []
+      )
+    ),
+    secondaryFolderPathError,
+  };
+}
+
+async function getPrimaryFolderPath(
+  projectId: string,
+  client: pg.Pool | pg.PoolClient = getDbPool()
+): Promise<string | null> {
+  const result = await client.query<{ folder_path: string }>(
+    "select folder_path from project_folder_routes where project_id = $1",
+    [projectId]
+  );
+
+  return result.rows[0]?.folder_path ?? null;
+}
+
+function excludePrimaryFolderPath(
+  paths: string[],
+  primaryFolderPath: string | null
+): string[] {
+  return primaryFolderPath
+    ? paths.filter((path) => path !== primaryFolderPath)
+    : paths;
+}
+
+export async function saveProjectSecondaryFolderRoute(input: {
+  projectId: string;
+  folderPath: string;
+  originalFolderPath?: string | null;
+}): Promise<ProjectSummary | null> {
+  const client = await getDbPool().connect();
+
+  try {
+    await client.query("begin");
+    const primaryFolderPath = await getPrimaryFolderPath(input.projectId, client);
+
+    if (input.folderPath === primaryFolderPath) {
+      if (input.originalFolderPath) {
+        await client.query(
+          `
+            delete from project_secondary_folder_routes
+            where project_id = $1
+              and folder_path = $2
+          `,
+          [input.projectId, input.originalFolderPath]
+        );
+      }
+
+      await client.query("commit");
+      return getProject(input.projectId);
+    }
+
+    if (input.originalFolderPath) {
+      await client.query(
+        `
+          update project_secondary_folder_routes
+          set folder_path = $3,
+              updated_at = now()
+          where project_id = $1
+            and folder_path = $2
+        `,
+        [input.projectId, input.originalFolderPath, input.folderPath]
+      );
+    } else {
+      const sortResult = await client.query<{ sort_order: number }>(
+        `
+          select coalesce(max(sort_order) + 1, 0) as sort_order
+          from project_secondary_folder_routes
+          where project_id = $1
+        `,
+        [input.projectId]
+      );
+
+      await client.query(
+        `
+          insert into project_secondary_folder_routes (
+            project_id,
+            folder_path,
+            sort_order
+          )
+          values ($1, $2, $3)
+          on conflict (project_id, folder_path) do update
+          set updated_at = now()
+        `,
+        [
+          input.projectId,
+          input.folderPath,
+          sortResult.rows[0]?.sort_order ?? 0,
+        ]
+      );
+    }
+
+    await client.query("commit");
+
+    return getProject(input.projectId);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function deleteProjectSecondaryFolderRoute(input: {
+  projectId: string;
+  folderPath: string;
+}): Promise<ProjectSummary | null> {
+  await getDbPool().query(
+    `
+      delete from project_secondary_folder_routes
+      where project_id = $1
+        and folder_path = $2
+    `,
+    [input.projectId, input.folderPath]
+  );
+
+  return getProject(input.projectId);
 }
 
 export async function listLabelSyncBoards(
@@ -363,7 +523,13 @@ export async function getProject(
     return null;
   }
 
-  return mapProject(row, await listProjectManagers(projectId, client));
+  const projectManagers = await listProjectManagers(projectId, client);
+  const secondaryFolderPaths = await listProjectSecondaryFolderPaths(
+    projectId,
+    client
+  ).catch(() => []);
+
+  return mapProject(row, projectManagers, secondaryFolderPaths);
 }
 
 export async function updateProjectName(input: {
@@ -550,6 +716,76 @@ export async function upsertProjectFolderRoute(input: {
   );
 
   return getProject(input.projectId);
+}
+
+export async function listProjectSecondaryFolderPaths(
+  projectId: string,
+  client?: pg.PoolClient
+): Promise<string[]> {
+  const result = await db(client).query<{ folder_path: string }>(
+    `
+      select folder_path
+      from project_secondary_folder_routes
+      where project_id = $1
+      order by sort_order asc, id asc
+    `,
+    [projectId]
+  );
+
+  return result.rows.map((row) => row.folder_path);
+}
+
+export async function replaceProjectSecondaryFolderRoutes(input: {
+  projectId: string;
+  paths: string[];
+}): Promise<ProjectSummary | null> {
+  const client = await getDbPool().connect();
+
+  try {
+    await client.query("begin");
+    const primaryFolderPath = await getPrimaryFolderPath(input.projectId, client);
+    const paths = excludePrimaryFolderPath(input.paths, primaryFolderPath);
+
+    await client.query(
+      "delete from project_secondary_folder_routes where project_id = $1",
+      [input.projectId]
+    );
+
+    if (paths.length > 0) {
+      await client.query(
+        `
+          insert into project_secondary_folder_routes (
+            project_id,
+            folder_path,
+            sort_order
+          )
+          select $1, item.folder_path, item.sort_order
+          from jsonb_to_recordset($2::jsonb) as item(
+            folder_path text,
+            sort_order integer
+          )
+        `,
+        [
+          input.projectId,
+          JSON.stringify(
+            paths.map((folderPath, index) => ({
+              folder_path: folderPath,
+              sort_order: index,
+            }))
+          ),
+        ]
+      );
+    }
+
+    await client.query("commit");
+
+    return getProject(input.projectId);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function replaceProjectManagers(
@@ -897,7 +1133,8 @@ function mapDepartment(row: DepartmentRow): DepartmentSummary {
 
 function mapProject(
   row: ProjectRow,
-  projectManagers: ProjectManagerSummary[] = []
+  projectManagers: ProjectManagerSummary[] = [],
+  secondaryFolderPaths: string[] = []
 ): ProjectSummary {
   return {
     id: row.id,
@@ -906,6 +1143,7 @@ function mapProject(
     projectColor: row.project_color,
     departmentId: "",
     folderPath: row.folder_path,
+    secondaryFolderPaths,
     projectManagers,
   };
 }
@@ -923,6 +1161,21 @@ function groupProjectManagers(
   }
 
   return managersByProjectId;
+}
+
+function groupSecondaryFolderPaths(
+  rows: ProjectSecondaryFolderRouteRow[]
+): Map<string, string[]> {
+  const pathsByProjectId = new Map<string, string[]>();
+
+  for (const row of rows) {
+    const paths = pathsByProjectId.get(row.project_id) ?? [];
+
+    paths.push(row.folder_path);
+    pathsByProjectId.set(row.project_id, paths);
+  }
+
+  return pathsByProjectId;
 }
 
 function mapProjectManager(row: ProjectManagerRow): ProjectManagerSummary {

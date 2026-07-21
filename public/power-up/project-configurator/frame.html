@@ -238,20 +238,15 @@
         padding: 0;
       }
 
-      .project-manager-add {
+      .project-manager-add,
+      .folder-path-editor,
+      .secondary-folder-row {
         align-items: end;
         display: grid;
         gap: 6px;
-        grid-template-columns: minmax(120px, 1fr) auto;
+        grid-template-columns: minmax(0, 180px) auto;
         margin-top: 7px;
-      }
-
-      .folder-path-editor {
-        align-items: end;
-        display: grid;
-        gap: 6px;
-        grid-template-columns: minmax(160px, 1fr) auto;
-        margin-top: 7px;
+        max-width: 100%;
       }
 
       .secondary-folder-paths {
@@ -270,15 +265,8 @@
         gap: 7px;
       }
 
-      .secondary-folder-row {
-        align-items: end;
-        display: grid;
-        gap: 6px;
-        grid-template-columns: minmax(160px, 1fr) auto;
-      }
-
       .secondary-folder-row.final {
-        grid-template-columns: minmax(160px, 1fr);
+        grid-template-columns: minmax(0, 180px);
       }
 
       .entity-title {
@@ -657,7 +645,7 @@
       }
 
       function renderSecondaryFolderPaths(project) {
-        var state = getSecondaryFolderPathState(project.id);
+        var state = getSecondaryFolderPathState(project);
 
         return (
           '<details class="secondary-folder-paths" data-secondary-folder-details="' +
@@ -666,8 +654,10 @@
           (state.expanded ? "open" : "") +
           ">" +
           "<summary>Secondary Folder Paths</summary>" +
+          renderSecondaryFolderPathError() +
           state.rows
             .map(function (value, index) {
+              var row = normalizeSecondaryFolderRow(value);
               var isFinal = index === state.rows.length - 1;
 
               return (
@@ -679,7 +669,7 @@
                 '" data-secondary-folder-index="' +
                 index +
                 '" value="' +
-                escapeHtml(value) +
+                escapeHtml(row.value) +
                 '" autocomplete="off" /></label>' +
                 (isFinal
                   ? ""
@@ -692,16 +682,37 @@
               );
             })
             .join("") +
-          '<p class="meta">Secondary paths are temporary and are not saved.</p>' +
+          '<button type="button" class="secondary" data-save-secondary-folders="' +
+          escapeHtml(project.id) +
+          '">Apply</button>' +
           "</details>"
         );
       }
 
-      function getSecondaryFolderPathState(projectId) {
+      function renderSecondaryFolderPathError() {
+        return currentState &&
+          currentState.errors &&
+          currentState.errors.secondaryFolderPaths
+          ? '<p class="message error">Secondary Folder Paths could not be loaded.</p>'
+          : "";
+      }
+
+      function getSecondaryFolderPathState(project) {
+        var projectId = typeof project === "string" ? project : project.id;
+
         if (!secondaryFolderPathState[projectId]) {
+          var savedRows =
+            typeof project === "string"
+              ? []
+              : (project.secondaryFolderPaths || []).slice();
+
           secondaryFolderPathState[projectId] = {
             expanded: false,
-            rows: [""],
+            rows: savedRows
+              .map(function (path) {
+                return { value: path, originalPath: path };
+              })
+              .concat([blankSecondaryFolderRow()]),
           };
         }
 
@@ -716,17 +727,33 @@
           return;
         }
 
-        if (state.rows.length === 0 || state.rows[state.rows.length - 1].trim() !== "") {
-          state.rows.push("");
+        if (
+          state.rows.length === 0 ||
+          normalizeSecondaryFolderRow(state.rows[state.rows.length - 1]).value.trim() !== ""
+        ) {
+          state.rows.push(blankSecondaryFolderRow());
         }
 
         while (
           state.rows.length > 1 &&
-          state.rows[state.rows.length - 1].trim() === "" &&
-          state.rows[state.rows.length - 2].trim() === ""
+          normalizeSecondaryFolderRow(state.rows[state.rows.length - 1]).value.trim() === "" &&
+          normalizeSecondaryFolderRow(state.rows[state.rows.length - 2]).value.trim() === ""
         ) {
           state.rows.pop();
         }
+      }
+
+      function blankSecondaryFolderRow() {
+        return { value: "", originalPath: "" };
+      }
+
+      function normalizeSecondaryFolderRow(row) {
+        return typeof row === "string"
+          ? { value: row, originalPath: row }
+          : {
+              value: String((row && row.value) || ""),
+              originalPath: String((row && row.originalPath) || ""),
+            };
       }
 
       function renderProjectManagers(project, forDialog) {
@@ -865,6 +892,11 @@
               button.getAttribute("data-remove-secondary-folder"),
               Number(button.getAttribute("data-secondary-folder-index"))
             );
+          };
+        });
+        document.querySelectorAll("button[data-save-secondary-folders]").forEach(function (button) {
+          button.onclick = function () {
+            saveSecondaryFolderPaths(button.getAttribute("data-save-secondary-folders"));
           };
         });
         document.querySelectorAll("button[data-remove-project-manager]").forEach(function (button) {
@@ -1565,15 +1597,19 @@
         }
 
         try {
-          await apiRequest(
+          var result = await apiRequest(
             "/api/project-configurator/projects/" +
               encodeURIComponent(projectId) +
               "/folder-path",
             { folderPath: folderPath },
             "PATCH"
           );
-          await loadState();
-          showMessage("Folder Path saved.", "success");
+
+          if (result && result.project) {
+            replaceProjectInState(result.project);
+          }
+
+          showMessage("Primary Folder Path saved.", "success");
         } catch (error) {
           showMessage(error.message || error, "error");
         }
@@ -1583,7 +1619,9 @@
         var state = getSecondaryFolderPathState(projectId);
         var rowCount = state.rows.length;
 
-        state.rows[index] = value;
+        var row = normalizeSecondaryFolderRow(state.rows[index]);
+        row.value = value;
+        state.rows[index] = row;
         ensureFinalSecondaryBlank(projectId);
 
         if (state.rows.length !== rowCount) {
@@ -1591,13 +1629,37 @@
         }
       }
 
-      function removeSecondaryFolderPath(projectId, index) {
+      async function removeSecondaryFolderPath(projectId, index) {
         var state = getSecondaryFolderPathState(projectId);
+        var row = normalizeSecondaryFolderRow(state.rows[index]);
 
-        if (index < state.rows.length - 1) {
-          state.rows.splice(index, 1);
+        if (index >= state.rows.length - 1) {
+          return;
         }
 
+        if (row.originalPath) {
+          try {
+            var result = await apiRequest(
+              "/api/project-configurator/projects/" +
+                encodeURIComponent(projectId) +
+                "/secondary-folder-path",
+              { folderPath: row.originalPath },
+              "DELETE"
+            );
+
+            if (result && result.project) {
+              resetSecondaryFolderState(projectId, result.project, true);
+              replaceProjectInState(result.project);
+            }
+
+            showMessage("Secondary Folder Path removed.", "success");
+          } catch (error) {
+            showMessage(error.message || error, "error");
+          }
+          return;
+        }
+
+        state.rows.splice(index, 1);
         ensureFinalSecondaryBlank(projectId);
         renderState(currentState);
       }
@@ -1609,9 +1671,63 @@
           .querySelectorAll('[data-secondary-folder-input="' + projectId + '"]')
           .forEach(function (input) {
             var index = Number(input.getAttribute("data-secondary-folder-index"));
-            state.rows[index] = input.value;
+            var row = normalizeSecondaryFolderRow(state.rows[index]);
+            row.value = input.value;
+            state.rows[index] = row;
           });
         ensureFinalSecondaryBlank(projectId);
+      }
+
+      async function saveSecondaryFolderPaths(projectId) {
+        captureSecondaryFolderPaths(projectId);
+
+        var state = getSecondaryFolderPathState(projectId);
+        var paths = state.rows
+          .map(function (row) {
+            return normalizeSecondaryFolderRow(row).value.trim();
+          })
+          .filter(Boolean);
+
+        try {
+          var result = await apiRequest(
+            "/api/project-configurator/projects/" +
+              encodeURIComponent(projectId) +
+              "/secondary-folder-paths",
+            { paths: paths },
+            "PATCH"
+          );
+
+          if (result && result.project) {
+            resetSecondaryFolderState(projectId, result.project, true);
+            replaceProjectInState(result.project);
+          }
+
+          showMessage("Secondary Folder Paths saved.", "success");
+        } catch (error) {
+          showMessage(error.message || error, "error");
+        }
+      }
+
+      function resetSecondaryFolderState(projectId, project, expanded) {
+        secondaryFolderPathState[projectId] = {
+          expanded: expanded,
+          rows: (project.secondaryFolderPaths || [])
+            .map(function (path) {
+              return { value: path, originalPath: path };
+            })
+            .concat([blankSecondaryFolderRow()]),
+        };
+      }
+
+      function replaceProjectInState(project) {
+        if (!currentState || !project) {
+          return;
+        }
+
+        currentState.projects = currentState.projects.map(function (item) {
+          return item.id === project.id ? project : item;
+        });
+        renderState(currentState);
       }
 
       function findMemberByInput(value) {

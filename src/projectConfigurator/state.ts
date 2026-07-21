@@ -4,7 +4,7 @@ import { upsertMembers, type MemberRecord } from "../db/repositories/members.js"
 import { fetchTrelloBoardMembers } from "../trello/api.js";
 import {
   listActiveDepartments,
-  listActiveProjects,
+  listActiveProjectsWithSecondaryStatus,
 } from "./repository.js";
 import {
   getTrelloCredentials,
@@ -18,10 +18,15 @@ export type ProjectConfiguratorState = {
   viewer: ProjectConfiguratorViewer;
   capabilities: ProjectConfiguratorCapabilities;
   departments: Awaited<ReturnType<typeof listActiveDepartments>>;
-  projects: Awaited<ReturnType<typeof listActiveProjects>>;
+  projects: Awaited<
+    ReturnType<typeof listActiveProjectsWithSecondaryStatus>
+  >["projects"];
   members: MemberRecord[];
   settings: {
     projectManagerCap: number;
+  };
+  errors: {
+    secondaryFolderPaths: string | null;
   };
   colors: {
     all: string[];
@@ -34,10 +39,10 @@ export async function getProjectConfiguratorState(
   trelloMemberId: string,
   trelloBoardId: string
 ): Promise<ProjectConfiguratorState> {
-  const [viewer, departments, projects, trelloMembers, settings] = await Promise.all([
+  const [viewer, departments, projectList, trelloMembers, settings] = await Promise.all([
     resolveProjectConfiguratorViewer(trelloMemberId),
     listActiveDepartments(),
-    listActiveProjects(),
+    listActiveProjectsWithSecondaryStatus(),
     fetchTrelloBoardMembers(trelloBoardId, getTrelloCredentials()),
     getAppSettings(),
   ]);
@@ -57,9 +62,12 @@ export async function getProjectConfiguratorState(
     viewer,
     capabilities: resolveCapabilities(viewer),
     departments,
-    projects,
+    projects: projectList.projects,
     members,
     settings,
+    errors: {
+      secondaryFolderPaths: projectList.secondaryFolderPathError,
+    },
     colors: {
       all: [...trelloLabelColors],
       usedDepartmentColors,

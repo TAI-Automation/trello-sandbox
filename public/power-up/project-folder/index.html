@@ -68,6 +68,17 @@
             ? [projectFolderButton()]
             : [];
         },
+
+        "card-back-section": function (t) {
+          return {
+            title: "Open Project Folder",
+            content: {
+              type: "iframe",
+              url: t.signUrl("./section.html"),
+              height: 1,
+            },
+          };
+        },
       });
     </script>
   </body>

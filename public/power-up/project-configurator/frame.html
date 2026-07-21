@@ -1183,8 +1183,10 @@
         try {
           ensureUniqueName(isProject ? "project" : "department", name, context.entity && context.entity.id);
 
+          var createProjectResult = null;
+
           if (context.action === "createProject") {
-            await apiRequest("/api/project-configurator/projects", {
+            createProjectResult = await apiRequest("/api/project-configurator/projects", {
               name: name,
               projectColor: color,
               projectManagerMemberIds: editorProjectManagerIds,
@@ -1220,7 +1222,22 @@
 
           dialog.close();
           await loadState();
-          showMessage((isProject ? "Project" : "Department") + " saved.", "success");
+          if (
+            createProjectResult &&
+            createProjectResult.labelSync &&
+            createProjectResult.labelSync.failed > 0
+          ) {
+            showMessage(
+              "Project saved, but labels failed to sync on " +
+                createProjectResult.labelSync.failed +
+                " of " +
+                createProjectResult.labelSync.boards +
+                " known boards. Use Synchronize labels to retry.",
+              "error"
+            );
+          } else {
+            showMessage((isProject ? "Project" : "Department") + " saved.", "success");
+          }
         } catch (error) {
           showMessage(error.message || error, "error");
         }

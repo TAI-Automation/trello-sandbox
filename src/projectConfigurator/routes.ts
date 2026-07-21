@@ -30,6 +30,7 @@ import {
   getProjectLabelDeletionJob,
   startLabelSyncJob,
   startProjectLabelDeletionJob,
+  syncProjectLabelForKnownBoards,
 } from "./labelSync.js";
 import { resolveProjectConfiguratorViewer } from "./permissions.js";
 import { getProjectConfiguratorState } from "./state.js";
@@ -180,6 +181,7 @@ projectConfiguratorRouter.post(
       const name = readRequiredString(req.body, "name");
       const projectColor = readRequiredString(req.body, "projectColor");
       const trelloMemberId = readRequiredString(req.body, "trelloMemberId");
+      const trelloBoardId = readRequiredString(req.body, "trelloBoardId");
       const projectManagerMemberIds = readOptionalStringArray(
         req.body,
         "projectManagerMemberIds"
@@ -196,8 +198,12 @@ projectConfiguratorRouter.post(
         projectColor,
         projectManagerMemberIds,
       });
+      const labelSync = await syncProjectLabelForKnownBoards(
+        project,
+        trelloBoardId
+      );
 
-      res.status(201).json({ project });
+      res.status(201).json({ project, labelSync });
     } catch (error) {
       next(error);
     }

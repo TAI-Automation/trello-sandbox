@@ -239,6 +239,61 @@ export async function syncProjectLabelsForBoard(
   });
 }
 
+export async function syncProjectLabelForKnownBoards(
+  project: ProjectSummary,
+  currentBoardId?: string
+): Promise<LabelSyncResult> {
+  const boards = await listLabelSyncBoards(currentBoardId);
+  let synced = 0;
+  let failed = 0;
+
+  for (const board of boards) {
+    let boardError: string | null = null;
+
+    try {
+      const context = await getLabelSyncBoardContext(board.trelloBoardId);
+
+      await syncProjectLabel({
+        boardId: board.trelloBoardId,
+        projectId: project.id,
+        name: project.labelText,
+        color: project.projectColor,
+        trackedLabel: context.trackedProjectsById.get(project.id) ?? null,
+        trelloLabelsById: context.trelloLabelsById,
+      });
+      synced += 1;
+    } catch (error) {
+      failed += 1;
+      boardError = getErrorMessage(error);
+      await markBoardProjectLabelError({
+        trelloBoardId: board.trelloBoardId,
+        projectId: project.id,
+        syncedLabelText: project.labelText,
+        syncedColor: project.projectColor,
+        error: boardError,
+      });
+      console.log("project-configurator new project label sync failed", {
+        trelloBoardId: board.trelloBoardId,
+        projectId: project.id,
+        labelName: project.labelText,
+        error: boardError,
+      });
+    }
+
+    await markBoardLabelSyncComplete({
+      trelloBoardId: board.trelloBoardId,
+      error: boardError,
+    });
+  }
+
+  return {
+    boards: boards.length,
+    attempted: boards.length,
+    synced,
+    failed,
+  };
+}
+
 async function initializeLabelSyncJob(
   currentBoardId?: string
 ): Promise<void> {

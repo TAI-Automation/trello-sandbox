@@ -20,109 +20,32 @@ export type CsvExportSummary = {
 };
 
 const csvHeaders = {
-  boards: [
-    "id",
-    "name",
-    "desc",
-    "closed",
-    "idOrganization",
-    "url",
-    "shortUrl",
-    "dateLastActivity",
-    "dateLastView",
-    "raw_json",
-  ],
-  lists: ["id", "idBoard", "name", "closed", "pos", "subscribed", "raw_json"],
+  boards: ["board_id", "board_name", "json_downloaded_at", "json"],
+  lists: ["list_id", "list_name", "json_downloaded_at", "json"],
   cards: [
-    "id",
-    "idBoard",
-    "idList",
-    "name",
-    "desc",
-    "closed",
-    "pos",
-    "url",
-    "shortUrl",
-    "dateLastActivity",
-    "due",
-    "dueComplete",
-    "start",
-    "idMemberCreator",
-    "idAttachmentCover",
-    "labels_json",
-    "idLabels_json",
-    "idMembers_json",
-    "attachments_json",
-    "raw_json",
+    "card_id",
+    "creator_member_id",
+    "card_name",
+    "date_last_activity",
+    "json_downloaded_at",
+    "json",
   ],
-  cardLabels: ["cardId", "labelId", "labelName", "labelColor", "raw_json"],
-  labels: ["id", "idBoard", "name", "color", "raw_json"],
-  cardMembers: ["cardId", "memberId", "raw_json"],
-  members: ["id", "username", "fullName", "initials", "avatarUrl", "raw_json"],
-  memberships: [
-    "id",
-    "idMember",
-    "memberType",
-    "unconfirmed",
-    "deactivated",
-    "raw_json",
-  ],
-  actions: [
-    "id",
-    "idBoard",
-    "idCard",
-    "idList",
-    "idMemberCreator",
-    "type",
-    "date",
-    "data_json",
-    "raw_json",
-  ],
-  checklists: ["id", "idBoard", "idCard", "name", "pos", "raw_json"],
-  checkItems: [
-    "id",
-    "idChecklist",
-    "idCard",
-    "name",
-    "state",
-    "pos",
-    "due",
-    "idMember",
-    "raw_json",
-  ],
-  attachments: [
-    "id",
-    "idCard",
-    "name",
-    "url",
-    "bytes",
-    "date",
-    "mimeType",
-    "idMember",
-    "isUpload",
-    "raw_json",
-  ],
-  customFields: ["id", "idModel", "modelType", "name", "type", "raw_json"],
-  cardCustomFieldItems: [
-    "cardId",
-    "idCustomField",
-    "idValue",
-    "value_text",
-    "value_number",
-    "value_date",
-    "value_checked",
-    "raw_json",
-  ],
+  members: ["member_id", "full_name", "json_downloaded_at", "json"],
+  labels: ["label_id", "label_name", "json_downloaded_at", "json"],
+  cardMembers: ["card_id", "member_id", "json_downloaded_at", "json"],
+  cardLabels: ["card_id", "label_id", "json_downloaded_at", "json"],
+  actions: ["action_id", "action_date", "json_downloaded_at", "json"],
 } satisfies Record<string, string[]>;
 
 export async function exportTrelloBoardJsonToCsv(inputPath: string) {
   const absoluteInputPath = path.resolve(process.cwd(), inputPath);
   const exportDir = path.dirname(absoluteInputPath);
   const board = JSON.parse(await fs.readFile(absoluteInputPath, "utf8")) as JsonObject;
-  const csvFiles = buildCsvFiles(board);
+  const jsonDownloadedAt = deriveJsonDownloadedAt(absoluteInputPath);
+  const csvFiles = buildCsvFiles(board, jsonDownloadedAt);
   const summary: CsvExportSummary = {
     sourceFile: path.basename(absoluteInputPath),
-    generatedAt: new Date().toISOString(),
+    generatedAt: jsonDownloadedAt,
     csvFiles: [],
   };
 
@@ -145,199 +68,143 @@ export async function exportTrelloBoardJsonToCsv(inputPath: string) {
   return summary;
 }
 
-function buildCsvFiles(board: JsonObject): CsvFile[] {
+function buildCsvFiles(board: JsonObject, jsonDownloadedAt: string): CsvFile[] {
   const cards = readArray(board.cards);
   const labels = readArray(board.labels);
-  const labelById = new Map(labels.map((label) => [readString(label.id), label]));
-  const checklists = readArray(board.checklists);
 
   return [
     {
       fileName: "boards.csv",
       headers: csvHeaders.boards,
       rows: [
-        pickRow(board, csvHeaders.boards, {
-          raw_json: toJson(board),
-        }),
+        {
+          board_id: board.id,
+          board_name: board.name,
+          json_downloaded_at: jsonDownloadedAt,
+          json: toJson(buildBoardSummaryJson(board)),
+        },
       ],
     },
     {
       fileName: "lists.csv",
       headers: csvHeaders.lists,
-      rows: readArray(board.lists).map((list) =>
-        pickRow(list, csvHeaders.lists, { raw_json: toJson(list) })
-      ),
+      rows: readArray(board.lists).map((list) => ({
+        list_id: list.id,
+        list_name: list.name,
+        json_downloaded_at: jsonDownloadedAt,
+        json: toJson(list),
+      })),
     },
     {
       fileName: "cards.csv",
       headers: csvHeaders.cards,
-      rows: cards.map((card) =>
-        pickRow(card, csvHeaders.cards, {
-          labels_json: toJson(card.labels),
-          idLabels_json: toJson(card.idLabels),
-          idMembers_json: toJson(card.idMembers),
-          attachments_json: toJson(card.attachments),
-          raw_json: toJson(card),
-        })
-      ),
-    },
-    {
-      fileName: "card_labels.csv",
-      headers: csvHeaders.cardLabels,
-      rows: cards.flatMap((card) => buildCardLabelRows(card, labelById)),
-    },
-    {
-      fileName: "labels.csv",
-      headers: csvHeaders.labels,
-      rows: labels.map((label) =>
-        pickRow(label, csvHeaders.labels, { raw_json: toJson(label) })
-      ),
-    },
-    {
-      fileName: "card_members.csv",
-      headers: csvHeaders.cardMembers,
-      rows: cards.flatMap((card) =>
-        readPrimitiveArray(card.idMembers).map((memberId) => ({
-          cardId: card.id,
-          memberId,
-          raw_json: toJson({ cardId: card.id, memberId }),
-        }))
-      ),
+      rows: cards.map((card) => ({
+        card_id: card.id,
+        creator_member_id: card.idMemberCreator,
+        card_name: card.name,
+        date_last_activity: card.dateLastActivity,
+        json_downloaded_at: jsonDownloadedAt,
+        json: toJson(card),
+      })),
     },
     {
       fileName: "members.csv",
       headers: csvHeaders.members,
-      rows: readArray(board.members).map((member) =>
-        pickRow(member, csvHeaders.members, { raw_json: toJson(member) })
-      ),
+      rows: readArray(board.members).map((member) => ({
+        member_id: member.id,
+        full_name: member.fullName,
+        json_downloaded_at: jsonDownloadedAt,
+        json: toJson(member),
+      })),
     },
     {
-      fileName: "memberships.csv",
-      headers: csvHeaders.memberships,
-      rows: readArray(board.memberships).map((membership) =>
-        pickRow(membership, csvHeaders.memberships, {
-          raw_json: toJson(membership),
-        })
-      ),
+      fileName: "labels.csv",
+      headers: csvHeaders.labels,
+      rows: labels.map((label) => ({
+        label_id: label.id,
+        label_name: label.name,
+        json_downloaded_at: jsonDownloadedAt,
+        json: toJson(label),
+      })),
+    },
+    {
+      fileName: "card_members.csv",
+      headers: csvHeaders.cardMembers,
+      rows: cards.flatMap((card) => buildCardMemberRows(card, jsonDownloadedAt)),
+    },
+    {
+      fileName: "card_labels.csv",
+      headers: csvHeaders.cardLabels,
+      rows: cards.flatMap((card) => buildCardLabelRows(card, jsonDownloadedAt)),
     },
     {
       fileName: "actions.csv",
       headers: csvHeaders.actions,
-      rows: readArray(board.actions).map((action) =>
-        pickRow(action, csvHeaders.actions, {
-          idBoard: readNested(action, ["data", "board", "id"]),
-          idCard: readNested(action, ["data", "card", "id"]),
-          idList:
-            readNested(action, ["data", "list", "id"]) ??
-            readNested(action, ["data", "listBefore", "id"]) ??
-            readNested(action, ["data", "listAfter", "id"]),
-          data_json: toJson(action.data),
-          raw_json: toJson(action),
-        })
-      ),
-    },
-    {
-      fileName: "checklists.csv",
-      headers: csvHeaders.checklists,
-      rows: checklists.map((checklist) =>
-        pickRow(checklist, csvHeaders.checklists, {
-          raw_json: toJson(checklist),
-        })
-      ),
-    },
-    {
-      fileName: "check_items.csv",
-      headers: csvHeaders.checkItems,
-      rows: checklists.flatMap((checklist) =>
-        readArray(checklist.checkItems).map((checkItem) =>
-          pickRow(checkItem, csvHeaders.checkItems, {
-            idChecklist: checklist.id,
-            idCard: checkItem.idCard ?? checklist.idCard,
-            raw_json: toJson(checkItem),
-          })
-        )
-      ),
-    },
-    {
-      fileName: "attachments.csv",
-      headers: csvHeaders.attachments,
-      rows: cards.flatMap((card) =>
-        readArray(card.attachments).map((attachment) =>
-          pickRow(attachment, csvHeaders.attachments, {
-            idCard: card.id,
-            raw_json: toJson(attachment),
-          })
-        )
-      ),
-    },
-    {
-      fileName: "custom_fields.csv",
-      headers: csvHeaders.customFields,
-      rows: readArray(board.customFields).map((customField) =>
-        pickRow(customField, csvHeaders.customFields, {
-          name:
-            readNested(customField, ["display", "name"]) ??
-            readString(customField.name),
-          raw_json: toJson(customField),
-        })
-      ),
-    },
-    {
-      fileName: "card_custom_field_items.csv",
-      headers: csvHeaders.cardCustomFieldItems,
-      rows: cards.flatMap((card) =>
-        readArray(card.customFieldItems).map((item) =>
-          pickRow(item, csvHeaders.cardCustomFieldItems, {
-            cardId: card.id,
-            value_text: readNested(item, ["value", "text"]),
-            value_number: readNested(item, ["value", "number"]),
-            value_date: readNested(item, ["value", "date"]),
-            value_checked: readNested(item, ["value", "checked"]),
-            raw_json: toJson(item),
-          })
-        )
-      ),
+      rows: readArray(board.actions).map((action) => ({
+        action_id: action.id,
+        action_date: action.date,
+        json_downloaded_at: jsonDownloadedAt,
+        json: toJson(action),
+      })),
     },
   ];
 }
 
+function buildCardMemberRows(
+  card: JsonObject,
+  jsonDownloadedAt: string
+): Record<string, unknown>[] {
+  return readPrimitiveArray(card.idMembers).map((memberId) => ({
+    card_id: card.id,
+    member_id: memberId,
+    json_downloaded_at: jsonDownloadedAt,
+    json: toJson(card),
+  }));
+}
+
 function buildCardLabelRows(
   card: JsonObject,
-  labelById: Map<string, JsonObject>
+  jsonDownloadedAt: string
 ): Record<string, unknown>[] {
   const cardLabels = readArray(card.labels);
 
   if (cardLabels.length > 0) {
     return cardLabels.map((label) => ({
-      cardId: card.id,
-      labelId: label.id,
-      labelName: label.name,
-      labelColor: label.color,
-      raw_json: toJson({ cardId: card.id, label }),
+      card_id: card.id,
+      label_id: label.id,
+      json_downloaded_at: jsonDownloadedAt,
+      json: toJson(card),
     }));
   }
 
-  return readPrimitiveArray(card.idLabels).map((labelIdValue) => {
-    const labelId = readString(labelIdValue);
-    const label = labelById.get(labelId);
-
-    return {
-      cardId: card.id,
-      labelId,
-      labelName: label?.name,
-      labelColor: label?.color,
-      raw_json: toJson({ cardId: card.id, labelId, label }),
-    };
-  });
+  return readPrimitiveArray(card.idLabels).map((labelId) => ({
+    card_id: card.id,
+    label_id: labelId,
+    json_downloaded_at: jsonDownloadedAt,
+    json: toJson(card),
+  }));
 }
 
-function pickRow(
-  source: JsonObject,
-  headers: string[],
-  overrides: Record<string, unknown> = {}
-): Record<string, unknown> {
+function buildBoardSummaryJson(board: JsonObject): JsonObject {
+  const summaryHeaders = [
+    "id",
+    "name",
+    "desc",
+    "closed",
+    "idOrganization",
+    "idEnterprise",
+    "url",
+    "shortLink",
+    "shortUrl",
+    "dateLastActivity",
+    "dateLastView",
+    "idMemberCreator",
+  ];
+
   return Object.fromEntries(
-    headers.map((header) => [header, overrides[header] ?? source[header] ?? ""])
+    summaryHeaders
+      .filter((header) => board[header] !== undefined)
+      .map((header) => [header, board[header]])
   );
 }
 
@@ -375,26 +242,21 @@ function readPrimitiveArray(value: unknown): unknown[] {
     : [];
 }
 
-function readNested(source: JsonObject, keys: string[]): unknown {
-  let current: unknown = source;
-
-  for (const key of keys) {
-    if (!isObject(current)) {
-      return undefined;
-    }
-
-    current = current[key];
-  }
-
-  return current;
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
 function toJson(value: unknown): string {
   return JSON.stringify(value ?? null);
+}
+
+function deriveJsonDownloadedAt(inputPath: string): string {
+  const timestampFolder = path.basename(path.dirname(inputPath));
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/.exec(
+    timestampFolder
+  );
+
+  if (!match) {
+    return new Date().toISOString();
+  }
+
+  return `${match[1]}T${match[2]}:${match[3]}:${match[4]}.${match[5]}Z`;
 }
 
 function isObject(value: unknown): value is JsonObject {

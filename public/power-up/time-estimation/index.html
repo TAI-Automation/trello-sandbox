@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Time Estimation Power-Up</title>
+  </head>
+  <body>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var refreshSeconds = 1800;
+      var storageKey = "timeEstimation";
+
+      function sectionIconUrl() {
+        return (
+          window.location.origin +
+          "/power-up/time-estimation/icons/section-icon-144.svg"
+        );
+      }
+
+      function formatHours(total) {
+        return Number(total.toFixed(2)).toString();
+      }
+
+      function readRows(value) {
+        return value && Array.isArray(value.rows) ? value.rows : [];
+      }
+
+      function totalHours(rows) {
+        return rows.reduce(function (total, row) {
+          var hours = Number(row && row.hours);
+
+          return hours > 0 ? total + hours : total;
+        }, 0);
+      }
+
+      async function getTimeEstimation(t) {
+        return readRows(await t.get("card", "shared", storageKey));
+      }
+
+      window.TrelloPowerUp.initialize({
+        "card-back-section": function (t) {
+          return {
+            title: "Time Estimation",
+            icon: sectionIconUrl(),
+            content: {
+              type: "iframe",
+              url: t.signUrl("./section.html"),
+              height: 1,
+            },
+          };
+        },
+
+        "card-badges": async function (t) {
+          var rows = await getTimeEstimation(t);
+          var total = totalHours(rows);
+
+          if (rows.length === 0 || total <= 0) {
+            return [];
+          }
+
+          return [
+            {
+              text: "Total: " + formatHours(total) + " hours",
+              icon: sectionIconUrl(),
+              refresh: refreshSeconds,
+            },
+          ];
+        },
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Time Estimation</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --border: #dfe1e6;
+        --muted: #6b778c;
+        --text: #172b4d;
+        --brand: #0c66e4;
+        --danger: #ae2e24;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        color: var(--text);
+        margin: 0;
+      }
+
+      main {
+        display: grid;
+        gap: 10px;
+      }
+
+      .summary {
+        align-items: center;
+        background: transparent;
+        border: 0;
+        color: var(--text);
+        cursor: pointer;
+        display: flex;
+        font: inherit;
+        gap: 8px;
+        min-height: 28px;
+        padding: 0;
+        text-align: left;
+        width: 100%;
+      }
+
+      .caret {
+        color: var(--muted);
+        display: inline-block;
+        font-size: 13px;
+        line-height: 1;
+        transform: rotate(-90deg);
+        transition: transform 120ms ease;
+        width: 14px;
+      }
+
+      .expanded .caret {
+        transform: rotate(0deg);
+      }
+
+      .total {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .content {
+        display: none;
+        gap: 10px;
+      }
+
+      .expanded .content {
+        display: grid;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+        padding: 6px 6px 6px 0;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      input {
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        color: var(--text);
+        font: inherit;
+        min-height: 30px;
+        padding: 5px 7px;
+        width: 100%;
+      }
+
+      input.hours {
+        max-width: 120px;
+      }
+
+      .name-cell {
+        position: relative;
+      }
+
+      .member-menu {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        box-shadow: 0 4px 10px rgba(9, 30, 66, 0.18);
+        display: none;
+        left: 0;
+        max-height: 160px;
+        overflow-y: auto;
+        position: absolute;
+        right: 6px;
+        top: 38px;
+        z-index: 10;
+      }
+
+      .member-menu.open {
+        display: block;
+      }
+
+      .member-option {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        color: var(--text);
+        display: block;
+        min-height: 0;
+        padding: 7px 8px;
+        text-align: left;
+        width: 100%;
+      }
+
+      .member-option.active,
+      .member-option:hover {
+        background: rgba(9, 30, 66, 0.08);
+      }
+
+      .username {
+        color: var(--muted);
+      }
+
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 3px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 13px;
+        min-height: 30px;
+        padding: 6px 10px;
+      }
+
+      .primary {
+        background: var(--brand);
+        color: #ffffff;
+      }
+
+      .secondary {
+        background: rgba(9, 30, 66, 0.08);
+        color: var(--text);
+      }
+
+      .error {
+        color: var(--danger);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app"></main>
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      var t = window.TrelloPowerUp.iframe();
+      var storageKey = "timeEstimation";
+      var rows = [];
+      var draftRows = [];
+      var boardMembers = [];
+      var boardMembersLoaded = false;
+      var activeMenu = null;
+      var expanded = false;
+      var editing = false;
+      var error = "";
+
+      function formatHours(total) {
+        return Number(total.toFixed(2)).toString();
+      }
+
+      function totalHours(items) {
+        return items.reduce(function (total, row) {
+          var hours = Number(row.hours);
+
+          return hours > 0 ? total + hours : total;
+        }, 0);
+      }
+
+      function blankRow() {
+        return { name: "", hours: "", memberId: "" };
+      }
+
+      function isBlank(row) {
+        return row.name.trim() === "" && String(row.hours).trim() === "";
+      }
+
+      function normalizeRows(value) {
+        var storedRows = value && Array.isArray(value.rows) ? value.rows : [];
+
+        return storedRows
+          .map(function (row) {
+            return {
+              name: String((row && row.name) || "").trim(),
+              hours: Number(row && row.hours),
+              memberId: String((row && row.memberId) || "").trim(),
+            };
+          })
+          .filter(function (row) {
+            return row.name && row.hours > 0;
+          });
+      }
+
+      function makeDraftRows() {
+        if (rows.length === 0) {
+          return [blankRow(), blankRow()];
+        }
+
+        return rows
+          .map(function (row) {
+            return {
+              name: row.name,
+              hours: String(row.hours),
+              memberId: row.memberId || "",
+            };
+          })
+          .concat([blankRow()]);
+      }
+
+      function resize() {
+        return t.sizeTo("body");
+      }
+
+      function render() {
+        closeMemberMenu();
+
+        var app = document.getElementById("app");
+        var total = formatHours(totalHours(rows));
+        var sectionClass = expanded ? "expanded" : "";
+
+        app.className = sectionClass;
+        app.innerHTML =
+          '<button type="button" class="summary" id="toggleButton">' +
+          '<span class="caret">v</span>' +
+          '<span class="total">Total: ' +
+          total +
+          " hours</span>" +
+          "</button>" +
+          '<div class="content">' +
+          (editing ? renderEditor() : renderReadOnly()) +
+          "</div>";
+
+        document
+          .getElementById("toggleButton")
+          .addEventListener("click", toggleExpanded);
+
+        if (editing) {
+          bindEditor();
+        } else if (expanded) {
+          document.getElementById("editButton").addEventListener("click", edit);
+        }
+
+        resize();
+      }
+
+      function renderReadOnly() {
+        var body =
+          rows.length === 0
+            ? '<div class="empty">No estimates saved.</div>'
+            : '<table><thead><tr><th>Name</th><th>Hours</th></tr></thead><tbody>' +
+              rows
+                .map(function (row) {
+                  return (
+                    "<tr><td>" +
+                    escapeHtml(row.name) +
+                    "</td><td>" +
+                    formatHours(Number(row.hours)) +
+                    "</td></tr>"
+                  );
+                })
+                .join("") +
+              "</tbody></table>";
+
+        return (
+          body +
+          '<div class="actions">' +
+          '<button type="button" class="secondary" id="editButton">Edit</button>' +
+          "</div>"
+        );
+      }
+
+      function renderEditor() {
+        return (
+          '<table><thead><tr><th>Name</th><th>Hours</th></tr></thead><tbody>' +
+          draftRows
+            .map(function (row, index) {
+              return (
+                '<tr><td class="name-cell"><input data-index="' +
+                index +
+                '" data-field="name" value="' +
+                escapeHtml(row.name) +
+                '" autocomplete="off" /></td><td><input class="hours" data-index="' +
+                index +
+                '" data-field="hours" inputmode="decimal" value="' +
+                escapeHtml(String(row.hours)) +
+                '" /></td></tr>'
+              );
+            })
+            .join("") +
+          "</tbody></table>" +
+          (error ? '<div class="error">' + escapeHtml(error) + "</div>" : "") +
+          '<div class="actions">' +
+          '<button type="button" class="primary" id="saveButton">Save</button>' +
+          '<button type="button" class="secondary" id="cancelButton">Cancel</button>' +
+          "</div>"
+        );
+      }
+
+      function bindEditor() {
+        Array.prototype.forEach.call(
+          document.querySelectorAll("input[data-index]"),
+          function (input) {
+            input.addEventListener("input", updateDraft);
+
+            if (input.getAttribute("data-field") === "name") {
+              input.addEventListener("focus", openMemberMenu);
+              input.addEventListener("keydown", handleNameKeydown);
+            }
+          }
+        );
+        document.getElementById("saveButton").addEventListener("click", save);
+        document.getElementById("cancelButton").addEventListener("click", cancel);
+      }
+
+      function toggleExpanded() {
+        expanded = !expanded;
+        render();
+      }
+
+      function edit() {
+        editing = true;
+        expanded = true;
+        error = "";
+        draftRows = makeDraftRows();
+        render();
+      }
+
+      function cancel() {
+        editing = false;
+        error = "";
+        draftRows = [];
+        render();
+      }
+
+      function updateDraft(event) {
+        var input = event.currentTarget;
+        var index = Number(input.getAttribute("data-index"));
+        var field = input.getAttribute("data-field");
+
+        draftRows[index][field] = input.value;
+
+        if (field === "name") {
+          var selectedMember = getMemberById(draftRows[index].memberId);
+
+          if (selectedMember && input.value !== memberDisplayName(selectedMember)) {
+            draftRows[index].memberId = "";
+          }
+
+          renderMemberMenu(input, 0);
+        }
+
+        if (index === draftRows.length - 1 && !isBlank(draftRows[index])) {
+          draftRows.push(blankRow());
+          render();
+        }
+      }
+
+      async function save() {
+        if (!(await t.memberCanWriteToModel("card"))) {
+          error = "You do not have permission to edit this card.";
+          render();
+          return;
+        }
+
+        var saved = [];
+
+        for (var index = 0; index < draftRows.length; index += 1) {
+          var row = draftRows[index];
+          var name = row.name.trim();
+          var hoursText = String(row.hours).trim();
+
+          if (!name && !hoursText) {
+            continue;
+          }
+
+          if (!name || !hoursText) {
+            error = "Complete both Name and Hours before saving.";
+            render();
+            return;
+          }
+
+          var hours = Number(hoursText);
+
+          if (!Number.isFinite(hours) || hours <= 0) {
+            error = "Hours must be a positive number.";
+            render();
+            return;
+          }
+
+          saved.push({
+            name: name,
+            hours: hours,
+            memberId: row.memberId || "",
+          });
+        }
+
+        rows = mergeRows(saved);
+        editing = false;
+        error = "";
+        draftRows = [];
+        await t.set("card", "shared", storageKey, { rows: rows });
+        render();
+      }
+
+      function mergeRows(items) {
+        var merged = [];
+        var indexes = {};
+
+        items.forEach(function (row) {
+          var key = row.memberId
+            ? "member:" + row.memberId
+            : "name:" + normalizeName(row.name);
+          var existingIndex = indexes[key];
+
+          if (existingIndex === undefined) {
+            indexes[key] = merged.length;
+            merged.push(storedRow(row));
+            return;
+          }
+
+          merged[existingIndex].hours += row.hours;
+        });
+
+        return merged.map(function (row) {
+          row.hours = Number(row.hours.toFixed(2));
+          return row;
+        });
+      }
+
+      function storedRow(row) {
+        var stored = {
+          name: row.name,
+          hours: row.hours,
+        };
+
+        if (row.memberId) {
+          stored.memberId = row.memberId;
+        }
+
+        return stored;
+      }
+
+      function normalizeName(name) {
+        return name.toLowerCase().trim().replace(/\s+/g, " ");
+      }
+
+      function openMemberMenu(event) {
+        renderMemberMenu(event.currentTarget, 0);
+      }
+
+      function renderMemberMenu(input, selectedIndex) {
+        closeMemberMenu();
+
+        var query = normalizeName(input.value);
+        var matches = matchingMembers(query);
+
+        if (matches.length === 0) {
+          resize();
+          return;
+        }
+
+        var menu = document.createElement("div");
+        menu.className = "member-menu open";
+        menu.setAttribute("role", "listbox");
+        menu.innerHTML = matches
+          .map(function (member, index) {
+            return (
+              '<button type="button" class="member-option' +
+              (index === selectedIndex ? " active" : "") +
+              '" data-member-id="' +
+              escapeHtml(member.id) +
+              '" data-option-index="' +
+              index +
+              '">' +
+              escapeHtml(memberDisplayName(member)) +
+              (member.username
+                ? ' <span class="username">@' + escapeHtml(member.username) + "</span>"
+                : "") +
+              "</button>"
+            );
+          })
+          .join("");
+
+        input.parentElement.appendChild(menu);
+        activeMenu = {
+          input: input,
+          menu: menu,
+          matches: matches,
+          selectedIndex: selectedIndex,
+        };
+
+        Array.prototype.forEach.call(
+          menu.querySelectorAll(".member-option"),
+          function (option) {
+            option.addEventListener("mousedown", function (event) {
+              event.preventDefault();
+              selectMember(Number(option.getAttribute("data-option-index")));
+            });
+          }
+        );
+
+        resize();
+      }
+
+      function matchingMembers(query) {
+        if (!query) {
+          return [];
+        }
+
+        return boardMembers
+          .filter(function (member) {
+            return (
+              normalizeName(member.fullName || "").indexOf(query) !== -1 ||
+              normalizeName(member.username || "").indexOf(query) !== -1
+            );
+          })
+          .slice(0, 8);
+      }
+
+      function handleNameKeydown(event) {
+        if (!activeMenu || activeMenu.input !== event.currentTarget) {
+          if (event.key === "ArrowDown") {
+            renderMemberMenu(event.currentTarget, 0);
+          }
+          return;
+        }
+
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          moveMemberSelection(1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          moveMemberSelection(-1);
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          selectMember(activeMenu.selectedIndex);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          closeMemberMenu();
+          resize();
+        }
+      }
+
+      function moveMemberSelection(delta) {
+        var count = activeMenu.matches.length;
+        var nextIndex = (activeMenu.selectedIndex + delta + count) % count;
+
+        renderMemberMenu(activeMenu.input, nextIndex);
+      }
+
+      function selectMember(index) {
+        var member = activeMenu && activeMenu.matches[index];
+
+        if (!member) {
+          return;
+        }
+
+        var input = activeMenu.input;
+        var rowIndex = Number(input.getAttribute("data-index"));
+        var name = memberDisplayName(member);
+
+        draftRows[rowIndex].name = name;
+        draftRows[rowIndex].memberId = member.id;
+        input.value = name;
+        closeMemberMenu();
+
+        if (rowIndex === draftRows.length - 1 && !isBlank(draftRows[rowIndex])) {
+          draftRows.push(blankRow());
+          render();
+          return;
+        }
+
+        resize();
+      }
+
+      function closeMemberMenu() {
+        if (activeMenu && activeMenu.menu.parentElement) {
+          activeMenu.menu.parentElement.removeChild(activeMenu.menu);
+        }
+
+        activeMenu = null;
+      }
+
+      function getMemberById(memberId) {
+        if (!memberId) {
+          return null;
+        }
+
+        return (
+          boardMembers.find(function (member) {
+            return member.id === memberId;
+          }) || null
+        );
+      }
+
+      function memberDisplayName(member) {
+        return member.fullName || member.username || "";
+      }
+
+      async function loadBoardMembersOnce() {
+        if (boardMembersLoaded) {
+          return;
+        }
+
+        var board = await t.board("members");
+
+        boardMembers = board && Array.isArray(board.members) ? board.members : [];
+        boardMembersLoaded = true;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      t.render(async function () {
+        await loadBoardMembersOnce();
+        rows = normalizeRows(await t.get("card", "shared", storageKey));
+        render();
+      });
+
+      document.addEventListener("mousedown", function (event) {
+        if (!activeMenu) {
+          return;
+        }
+
+        if (
+          event.target === activeMenu.input ||
+          activeMenu.menu.contains(event.target)
+        ) {
+          return;
+        }
+
+        closeMemberMenu();
+        resize();
+      });
+    </script>
+  </body>
+</html>

@@ -25,10 +25,17 @@
         );
       }
 
+      function boardButtonIconUrl() {
+        return (
+          window.location.origin +
+          "/power-up/permission-manager-enforcer/icons/board-button-icon.svg"
+        );
+      }
+
       function enforcementButton() {
         return {
           text: "Enforcement",
-          icon: powerUpIconUrl(),
+          icon: boardButtonIconUrl(),
           condition: "admin",
           callback: function (t) {
             return t.modal({
